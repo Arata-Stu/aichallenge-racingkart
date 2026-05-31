@@ -4,6 +4,7 @@ mode="${1}"
 id="${2:-${ROS_DOMAIN_ID:-0}}"
 out_dir="${3:+${3}/d${id}}"
 out_dir="${out_dir:-/output/$(date +%Y%m%d-%H%M%S)/d${id}}"
+launch_file="aichallenge_system.launch.xml"
 
 case "${mode}" in
 "awsim")
@@ -12,14 +13,26 @@ case "${mode}" in
 "awsim-no-viz")
     opts=("simulation:=true" "use_sim_time:=true" "run_rviz:=false")
     ;;
+"awsim-joycon")
+    opts=("simulation:=true" "use_sim_time:=true" "run_rviz:=true")
+    launch_file="joycon_data_collection.launch.xml"
+    ;;
+"awsim-joycon-no-viz")
+    opts=("simulation:=true" "use_sim_time:=true" "run_rviz:=false")
+    launch_file="joycon_data_collection.launch.xml"
+    ;;
 "vehicle")
     opts=("simulation:=false" "use_sim_time:=false" "run_rviz:=false")
+    ;;
+"vehicle-joycon")
+    opts=("simulation:=false" "use_sim_time:=false" "run_rviz:=false")
+    launch_file="joycon_data_collection.launch.xml"
     ;;
 "rosbag")
     opts=("simulation:=false" "use_sim_time:=true" "run_rviz:=true")
     ;;
 *)
-    echo "invalid argument (use 'awsim' or 'vehicle' or 'rosbag')"
+    echo "invalid argument (use 'awsim', 'awsim-no-viz', 'awsim-joycon', 'awsim-joycon-no-viz', 'vehicle', 'vehicle-joycon', or 'rosbag')"
     exit 1
     ;;
 esac
@@ -36,4 +49,4 @@ export ROS_HOME="${out_dir}/ros"
 export ROS_LOG_DIR="${ROS_HOME}/log"
 mkdir -p "${ROS_LOG_DIR}"
 
-ros2 launch aichallenge_system_launch aichallenge_system.launch.xml "${opts[@]}" "domain_id:=$id"
+ros2 launch aichallenge_system_launch "${launch_file}" "${opts[@]}" "domain_id:=$id"

@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AICHALLENGE_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 BAG_PATH=""
-SCAN_TOPIC="/scan"
+SCAN_TOPIC="/sensing/lidar/scan"
 MAP_TOPIC="/map"
 OUTPUT_ROOT="${AICHALLENGE_DIR}/outputs/map"
 RUN_NAME=""

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <arg name="simulation" default="true"/>
+    <arg name="use_sim_time" default="true"/>
+    <arg name="run_rviz" default="true"/>
+    <arg name="sensor_model" default="racing_kart_sensor_kit"/>
+    <arg name="launch_vehicle_interface" default="$(eval &quot;'$(var simulation)' == 'false'&quot;)"/>
+    <arg name="capture" default="false"/>
+    <arg name="rosbag" default="false"/>
+    <arg name="domain_id" default="0"/>
+
+    <arg name="launch_bag_manager" default="true"/>
+    <arg name="bag_manager_param" default="$(find-pkg-share bag_manager_py)/config/bag_manager.param.yaml"/>
+    <arg name="trigger_topic" default="/rosbag2_recorder/trigger"/>
+
+    <log message="Launching Joy-Con data collection bundle."/>
+    <log message=" - simulation: $(var simulation)"/>
+    <log message=" - use_sim_time: $(var use_sim_time)"/>
+    <log message=" - run_rviz: $(var run_rviz)"/>
+    <log message=" - launch_vehicle_interface: $(var launch_vehicle_interface)"/>
+    <log message=" - launch_bag_manager: $(var launch_bag_manager)"/>
+    <log message=" - trigger_topic: $(var trigger_topic)"/>
+
+    <include file="$(find-pkg-share aichallenge_system_launch)/launch/aichallenge_system.launch.xml">
+        <arg name="simulation" value="$(var simulation)"/>
+        <arg name="use_sim_time" value="$(var use_sim_time)"/>
+        <arg name="run_rviz" value="$(var run_rviz)"/>
+        <arg name="sensor_model" value="$(var sensor_model)"/>
+        <arg name="launch_vehicle_interface" value="$(var launch_vehicle_interface)"/>
+        <arg name="control_method" value="joycon"/>
+        <arg name="capture" value="$(var capture)"/>
+        <arg name="rosbag" value="$(var rosbag)"/>
+        <arg name="domain_id" value="$(var domain_id)"/>
+    </include>
+
+    <group if="$(var launch_bag_manager)">
+        <include file="$(find-pkg-share bag_manager_py)/launch/bag_manager.launch.xml">
+            <arg name="bag_manager_param" value="$(var bag_manager_param)"/>
+            <arg name="use_sim_time" value="$(var use_sim_time)"/>
+            <arg name="trigger_topic" value="$(var trigger_topic)"/>
+        </include>
+    </group>
+</launch>
