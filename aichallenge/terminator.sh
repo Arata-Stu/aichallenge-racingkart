@@ -24,8 +24,8 @@ Environment overrides:
   SIMULATOR_CMD=${SIMULATOR_CMD}
   AUTOWARE_CMD=${AUTOWARE_CMD}
 
-The opened panes source SETUP_FILE, cd to AICHALLENGE_DIR, and prefill commands.
-Press Enter in each pane when you want to run the prepared command.
+The opened panes source SETUP_FILE, cd to AICHALLENGE_DIR, and put commands in shell history.
+Press Up then Enter in each pane when you want to run the prepared command.
 EOF
 }
 
@@ -41,15 +41,13 @@ fi
 
 mkdir -p "${WORK_DIR}"
 
-write_pane_script() {
+write_pane_rcfile() {
     local path="$1"
     local pane_title="$2"
     local prepared_command="$3"
     local domain_id="$4"
 
     {
-        echo "#!/bin/bash"
-        echo "set +u"
         printf 'AICHALLENGE_DIR=%q\n' "${AICHALLENGE_DIR}"
         printf 'SETUP_FILE=%q\n' "${SETUP_FILE}"
         printf 'PANE_TITLE=%q\n' "${pane_title}"
@@ -69,41 +67,22 @@ else
     echo "setup file not found: ${SETUP_FILE}"
 fi
 
-if ! cd "${AICHALLENGE_DIR}"; then
+if ! cd "${AICHALLENGE_DIR}" 2>/dev/null; then
     echo "failed to cd ${AICHALLENGE_DIR}"
-    exec bash -i
 fi
 
-interrupted=0
-trap 'interrupted=1; echo' INT
-
-while true; do
-    interrupted=0
-    if ! read -e -i "${PREPARED_COMMAND}" -p "[${PANE_TITLE}]$ " cmd; then
-        if [ "${interrupted}" -eq 1 ]; then
-            continue
-        fi
-        exec bash -i
-    fi
-    if [ -z "${cmd//[[:space:]]/}" ]; then
-        continue
-    fi
-
-    history -s "${cmd}" 2>/dev/null || true
-    eval "${cmd}"
-done
+history -s "${PREPARED_COMMAND}" 2>/dev/null || true
+export PS1="[${PANE_TITLE}]\\$ "
 PANE_BODY
     } >"${path}"
-
-    chmod +x "${path}"
 }
 
-simulator_script="${WORK_DIR}/simulator-pane.sh"
-autoware_script="${WORK_DIR}/autoware-pane.sh"
+simulator_rcfile="${WORK_DIR}/simulator-bashrc"
+autoware_rcfile="${WORK_DIR}/autoware-bashrc"
 config_file="${WORK_DIR}/terminator-config"
 
-write_pane_script "${simulator_script}" "simulator" "${SIMULATOR_CMD}" "${SIMULATOR_DOMAIN_ID}"
-write_pane_script "${autoware_script}" "autoware" "${AUTOWARE_CMD}" "${AUTOWARE_DOMAIN_ID}"
+write_pane_rcfile "${simulator_rcfile}" "simulator" "${SIMULATOR_CMD}" "${SIMULATOR_DOMAIN_ID}"
+write_pane_rcfile "${autoware_rcfile}" "autoware" "${AUTOWARE_CMD}" "${AUTOWARE_DOMAIN_ID}"
 
 cat >"${config_file}" <<EOF
 [global_config]
@@ -129,14 +108,14 @@ cat >"${config_file}" <<EOF
       order = 0
       profile = default
       title = AWSIM Simulator
-      command = ${simulator_script}
+      command = bash --rcfile ${simulator_rcfile} -i
     [[[terminal1]]]
       type = Terminal
       parent = paned0
       order = 1
       profile = default
       title = Autoware
-      command = ${autoware_script}
+      command = bash --rcfile ${autoware_rcfile} -i
 [plugins]
 EOF
 
