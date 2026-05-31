@@ -4,8 +4,10 @@ set -Eeuo pipefail
 
 AICHALLENGE_DIR="${AICHALLENGE_DIR:-/aichallenge}"
 SETUP_FILE="${SETUP_FILE:-${AICHALLENGE_DIR}/workspace/install/setup.bash}"
-SIMULATOR_CMD="${SIMULATOR_CMD:-bash run_simulator.bash}"
-AUTOWARE_CMD="${AUTOWARE_CMD:-bash run_autoware.bash awsim}"
+SIMULATOR_DOMAIN_ID="${SIMULATOR_DOMAIN_ID:-0}"
+AUTOWARE_DOMAIN_ID="${AUTOWARE_DOMAIN_ID:-1}"
+SIMULATOR_CMD="${SIMULATOR_CMD:-bash run_simulator.bash dev}"
+AUTOWARE_CMD="${AUTOWARE_CMD:-bash run_autoware.bash awsim ${AUTOWARE_DOMAIN_ID} /output/manual}"
 LAYOUT_NAME="aichallenge_manual"
 WORK_DIR="${TMPDIR:-/tmp}/aichallenge-terminator-${USER:-user}"
 
@@ -17,6 +19,8 @@ Usage:
 Environment overrides:
   AICHALLENGE_DIR=${AICHALLENGE_DIR}
   SETUP_FILE=${SETUP_FILE}
+  SIMULATOR_DOMAIN_ID=${SIMULATOR_DOMAIN_ID}
+  AUTOWARE_DOMAIN_ID=${AUTOWARE_DOMAIN_ID}
   SIMULATOR_CMD=${SIMULATOR_CMD}
   AUTOWARE_CMD=${AUTOWARE_CMD}
 
@@ -41,6 +45,7 @@ write_pane_script() {
     local path="$1"
     local pane_title="$2"
     local prepared_command="$3"
+    local domain_id="$4"
 
     {
         echo "#!/bin/bash"
@@ -49,27 +54,36 @@ write_pane_script() {
         printf 'SETUP_FILE=%q\n' "${SETUP_FILE}"
         printf 'PANE_TITLE=%q\n' "${pane_title}"
         printf 'PREPARED_COMMAND=%q\n' "${prepared_command}"
+        printf 'PANE_ROS_DOMAIN_ID=%q\n' "${domain_id}"
         cat <<'PANE_BODY'
+
+export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
+export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
+export CYCLONEDDS_URI="${CYCLONEDDS_URI:-file:///opt/autoware/cyclonedds.xml}"
+export ROS_DOMAIN_ID="${PANE_ROS_DOMAIN_ID}"
 
 if [ -f "${SETUP_FILE}" ]; then
     # shellcheck disable=SC1090
     source "${SETUP_FILE}"
-    echo "[INFO] sourced ${SETUP_FILE}"
 else
-    echo "[WARN] setup file not found: ${SETUP_FILE}"
+    echo "setup file not found: ${SETUP_FILE}"
 fi
 
 if ! cd "${AICHALLENGE_DIR}"; then
-    echo "[ERROR] failed to cd ${AICHALLENGE_DIR}"
-    exec bash
+    echo "failed to cd ${AICHALLENGE_DIR}"
+    exec bash -i
 fi
 
+interrupted=0
+trap 'interrupted=1; echo' INT
+
 while true; do
-    echo
-    echo "[INFO] ${PANE_TITLE}: Press Enter to run, or edit the prepared command."
+    interrupted=0
     if ! read -e -i "${PREPARED_COMMAND}" -p "[${PANE_TITLE}]$ " cmd; then
-        echo
-        exec bash
+        if [ "${interrupted}" -eq 1 ]; then
+            continue
+        fi
+        exec bash -i
     fi
     if [ -z "${cmd//[[:space:]]/}" ]; then
         continue
@@ -77,8 +91,6 @@ while true; do
 
     history -s "${cmd}" 2>/dev/null || true
     eval "${cmd}"
-    status=$?
-    echo "[INFO] command exited with status ${status}"
 done
 PANE_BODY
     } >"${path}"
@@ -90,8 +102,8 @@ simulator_script="${WORK_DIR}/simulator-pane.sh"
 autoware_script="${WORK_DIR}/autoware-pane.sh"
 config_file="${WORK_DIR}/terminator-config"
 
-write_pane_script "${simulator_script}" "simulator" "${SIMULATOR_CMD}"
-write_pane_script "${autoware_script}" "autoware" "${AUTOWARE_CMD}"
+write_pane_script "${simulator_script}" "simulator" "${SIMULATOR_CMD}" "${SIMULATOR_DOMAIN_ID}"
+write_pane_script "${autoware_script}" "autoware" "${AUTOWARE_CMD}" "${AUTOWARE_DOMAIN_ID}"
 
 cat >"${config_file}" <<EOF
 [global_config]
