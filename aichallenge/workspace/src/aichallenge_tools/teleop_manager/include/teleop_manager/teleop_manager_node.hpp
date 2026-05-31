@@ -40,12 +40,14 @@ private:
 
   // Parameters
   double speed_scale_, steer_scale_;
+  double throttle_axis_sign_, steer_axis_sign_;
   int joy_button_index_, ack_button_index_;
   int start_button_index_, stop_button_index_;
   int awsim_button_index_;
   int reset_button_index_;
-  int dpad_lr_axis_index_;
-  int dpad_ud_axis_index_;
+  int throttle_axis_index_, steer_axis_index_;
+  int steer_scale_inc_button_index_, steer_scale_dec_button_index_;
+  int speed_scale_inc_button_index_, speed_scale_dec_button_index_;
   double timer_hz_;
   double joy_timeout_sec_;
 

@@ -1,6 +1,7 @@
 #include "teleop_manager/teleop_manager_node.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <memory>
 #include <utility> // for std::move
@@ -29,16 +30,22 @@ TeleopManagerNode::TeleopManagerNode()
   // --- Parameter Declaration & Retrieval ---
   declare_parameter<double>("speed_scale", 1.0);
   declare_parameter<double>("steer_scale", 1.0);
-  declare_parameter<int>("joy_button_index",   2);
-  declare_parameter<int>("ack_button_index",   3);
-  declare_parameter<int>("start_button_index", 9);
-  declare_parameter<int>("stop_button_index",  8);
-  declare_parameter<int>("awsim_button_index", 2);
-  declare_parameter<int>("reset_button_index", 7);
+  declare_parameter<int>("throttle_axis_index", 1);
+  declare_parameter<int>("steer_axis_index", 0);
+  declare_parameter<double>("throttle_axis_sign", 1.0);
+  declare_parameter<double>("steer_axis_sign", 1.0);
+  declare_parameter<int>("joy_button_index", 3);
+  declare_parameter<int>("ack_button_index", 2);
+  declare_parameter<int>("start_button_index", 10);
+  declare_parameter<int>("stop_button_index", 9);
+  declare_parameter<int>("awsim_button_index", 1);
+  declare_parameter<int>("reset_button_index", 0);
   declare_parameter<double>("timer_hz", 40.0);
   declare_parameter<double>("joy_timeout_sec", 0.5);
-  declare_parameter<int>("dpad_lr_axis_index", 6); 
-  declare_parameter<int>("dpad_ud_axis_index", 7); 
+  declare_parameter<int>("steer_scale_inc_button_index", 14);
+  declare_parameter<int>("steer_scale_dec_button_index", 13);
+  declare_parameter<int>("speed_scale_inc_button_index", 11);
+  declare_parameter<int>("speed_scale_dec_button_index", 12);
 
   declare_parameter<std::string>("reset_frame_id", "map");
   declare_parameter<double>("reset_pos_x", 89666.0);
@@ -51,6 +58,10 @@ TeleopManagerNode::TeleopManagerNode()
 
   get_parameter("speed_scale", speed_scale_);
   get_parameter("steer_scale", steer_scale_);
+  get_parameter("throttle_axis_index", throttle_axis_index_);
+  get_parameter("steer_axis_index", steer_axis_index_);
+  get_parameter("throttle_axis_sign", throttle_axis_sign_);
+  get_parameter("steer_axis_sign", steer_axis_sign_);
   get_parameter("joy_button_index", joy_button_index_);
   get_parameter("ack_button_index", ack_button_index_);
   get_parameter("start_button_index", start_button_index_);
@@ -59,8 +70,10 @@ TeleopManagerNode::TeleopManagerNode()
   get_parameter("reset_button_index", reset_button_index_);
   get_parameter("timer_hz", timer_hz_);
   get_parameter("joy_timeout_sec", joy_timeout_sec_);
-  get_parameter("dpad_lr_axis_index", dpad_lr_axis_index_);
-  get_parameter("dpad_ud_axis_index", dpad_ud_axis_index_);
+  get_parameter("steer_scale_inc_button_index", steer_scale_inc_button_index_);
+  get_parameter("steer_scale_dec_button_index", steer_scale_dec_button_index_);
+  get_parameter("speed_scale_inc_button_index", speed_scale_inc_button_index_);
+  get_parameter("speed_scale_dec_button_index", speed_scale_dec_button_index_);
 
   get_parameter("reset_frame_id", reset_pose_msg_.header.frame_id);
   get_parameter("reset_pos_x", reset_pose_msg_.pose.pose.position.x);
@@ -122,11 +135,16 @@ void TeleopManagerNode::joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg)
 {
   last_joy_msg_time_ = this->get_clock()->now();
 
+  const auto button_pressed = [&msg](const int index) {
+    return index >= 0 && static_cast<int>(msg->buttons.size()) > index && msg->buttons[index] == 1;
+  };
+  const auto axis_value = [&msg](const int index) {
+    return index >= 0 && static_cast<int>(msg->axes.size()) > index ? msg->axes[index] : 0.0;
+  };
+
   // 1) Start/stop/AWSIM/Reset buttons (with debounce)
-  bool curr_start = (static_cast<int>(msg->buttons.size()) > start_button_index_
-                     && msg->buttons[start_button_index_] == 1);
-  bool curr_stop  = (static_cast<int>(msg->buttons.size()) > stop_button_index_
-                     && msg->buttons[stop_button_index_]  == 1);
+  bool curr_start = button_pressed(start_button_index_);
+  bool curr_stop = button_pressed(stop_button_index_);
   
   if (check_button_press(curr_start, prev_start_pressed_)) {
     std_msgs::msg::Bool b; b.data = true;
@@ -137,16 +155,14 @@ void TeleopManagerNode::joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg)
     trigger_pub_->publish(b);
   }
 
-  bool curr_awsim_button = (static_cast<int>(msg->buttons.size()) > awsim_button_index_
-                            && msg->buttons[awsim_button_index_] == 1);
+  bool curr_awsim_button = button_pressed(awsim_button_index_);
   if (check_button_press(curr_awsim_button, prev_awsim_button_pressed_)) {
     std_msgs::msg::Bool b; b.data = true;
     awsim_trigger_pub_->publish(b);
     RCLCPP_INFO(get_logger(), "Published true to /awsim/control_mode_request_topic");
   }
 
-  bool curr_reset_button = (static_cast<int>(msg->buttons.size()) > reset_button_index_
-                            && msg->buttons[reset_button_index_] == 1);
+  bool curr_reset_button = button_pressed(reset_button_index_);
   if (check_button_press(curr_reset_button, prev_reset_button_pressed_)) {
     auto empty_msg = std::make_unique<std_msgs::msg::Empty>();
     reset_publisher_->publish(std::move(empty_msg));
@@ -159,10 +175,8 @@ void TeleopManagerNode::joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg)
   }
 
   // 2) Mode selection
-  bool joy_pressed = (static_cast<int>(msg->buttons.size()) > joy_button_index_
-                      && msg->buttons[joy_button_index_] == 1);
-  bool ack_pressed = (static_cast<int>(msg->buttons.size()) > ack_button_index_
-                      && msg->buttons[ack_button_index_] == 1);
+  bool joy_pressed = button_pressed(joy_button_index_);
+  bool ack_pressed = button_pressed(ack_button_index_);
   
   if (ack_pressed) {
     ack_active_ = true; joy_active_ = false;
@@ -174,22 +188,17 @@ void TeleopManagerNode::joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg)
 
   // 3) Calculate speed/steer in Joy mode (using current scales)
   if (joy_active_) {
-    double raw_speed = (static_cast<int>(msg->axes.size()) > 1 ? msg->axes[1] : 0.0);
-    double raw_steer = (static_cast<int>(msg->axes.size()) > 3 ? msg->axes[3] : 0.0);
+    double raw_speed = axis_value(throttle_axis_index_) * throttle_axis_sign_;
+    double raw_steer = axis_value(steer_axis_index_) * steer_axis_sign_;
     joy_speed_ = raw_speed * speed_scale_;
     joy_steer_ = raw_steer * steer_scale_;
   }
 
-  // 4) D-pad for dynamic scale adjustment (with debounce)
-  // パラメータ化された軸インデックスを使用
-  double a_lr = (static_cast<int>(msg->axes.size()) > dpad_lr_axis_index_ ? msg->axes[dpad_lr_axis_index_] : 0.0);
-  double a_ud = (static_cast<int>(msg->axes.size()) > dpad_ud_axis_index_ ? msg->axes[dpad_ud_axis_index_] : 0.0);
-
-  // コントローラによって軸の+1/-1が逆の場合があるため、元のロジックを踏襲
-  bool steer_scale_inc = std::abs(a_lr + 1.0) < 1e-3;  // 右 (軸値 -1.0)
-  bool steer_scale_dec = std::abs(a_lr - 1.0) < 1e-3;  // 左 (軸値  1.0)
-  bool speed_scale_inc = std::abs(a_ud - 1.0) < 1e-3;  // 上 (軸値  1.0)
-  bool speed_scale_dec = std::abs(a_ud + 1.0) < 1e-3;  // 下 (軸値 -1.0)
+  // 4) D-pad buttons for dynamic scale adjustment (with debounce)
+  bool steer_scale_inc = button_pressed(steer_scale_inc_button_index_);
+  bool steer_scale_dec = button_pressed(steer_scale_dec_button_index_);
+  bool speed_scale_inc = button_pressed(speed_scale_inc_button_index_);
+  bool speed_scale_dec = button_pressed(speed_scale_dec_button_index_);
 
   // Steer Scale 調整 (左右)
   if (check_button_press(steer_scale_inc, prev_steer_scale_inc_pressed_)) {

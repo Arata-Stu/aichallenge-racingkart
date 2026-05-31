@@ -7,7 +7,7 @@ SETUP_FILE="${SETUP_FILE:-${AICHALLENGE_DIR}/workspace/install/setup.bash}"
 SIMULATOR_DOMAIN_ID="${SIMULATOR_DOMAIN_ID:-0}"
 AUTOWARE_DOMAIN_ID="${AUTOWARE_DOMAIN_ID:-1}"
 SIMULATOR_CMD="${SIMULATOR_CMD:-bash run_simulator.bash dev}"
-AUTOWARE_CMD="${AUTOWARE_CMD:-bash run_autoware.bash awsim ${AUTOWARE_DOMAIN_ID} /output/manual}"
+AUTOWARE_CMD="${AUTOWARE_CMD:-bash run_autoware_manual.bash awsim ${AUTOWARE_DOMAIN_ID} /output/manual}"
 LAYOUT_NAME="aichallenge_manual"
 WORK_DIR="${TMPDIR:-/tmp}/aichallenge-terminator-${USER:-user}"
 
