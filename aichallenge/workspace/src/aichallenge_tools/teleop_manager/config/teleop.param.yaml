@@ -8,7 +8,7 @@
 
     # --- スティック軸 ---
     throttle_axis_index:  1   # left stick vertical
-    steer_axis_index:     0   # left stick horizontal
+    steer_axis_index:     2   # left stick horizontal
     throttle_axis_sign:   1.0 # 前後が逆なら -1.0
     steer_axis_sign:      1.0 # 左右が逆なら -1.0
 
