@@ -1,5 +1,6 @@
 libgl1-mesa-glx
 libgl1-mesa-dri
+libopencv-dev
 iproute2
 wmctrl
 ros-humble-rqt-tf-tree

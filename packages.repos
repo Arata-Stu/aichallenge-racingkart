@@ -1,7 +1,7 @@
 repositories:
   # Race Line
   ## global_racetrajectory_optimization
-  aichallenge/my_workspace/map_creation:
+  aichallenge/my_workspace/map_creation/global_racetrajectory_optimization:
     type: git
     url: https://github.com/carbuncle01/global_racetrajectory_optimization.git
     version: magp

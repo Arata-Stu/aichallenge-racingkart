@@ -1,0 +1,25 @@
+/**:
+  ros__parameters:
+    map_path: ""
+    map_frame_id: map
+    scan_frame_id: base_link
+    output_topic: virtual_scan
+
+    # These must match the PNG map coordinate convention.
+    resolution: 0.05
+    origin_x: 0.0
+    origin_y: 0.0
+    invert_y_axis: true
+
+    timer_hz: 20.0
+    angle_min_deg: -135.0
+    angle_max_deg: 135.0
+    num_rays: 1080
+    range_min: 0.05
+    range_max: 30.0
+    # 0.0 means resolution * 0.5
+    ray_step: 0.0
+
+    # Black pixels are walls. White and gray pixels are ignored/traversable.
+    occupied_threshold: 20
+    debug: false
