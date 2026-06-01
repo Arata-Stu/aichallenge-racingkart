@@ -5,8 +5,8 @@
 
   <arg name="use_sim_time" default="true"/>
   <arg name="pose_topic" default="/localization/pose_with_covariance"/>
-  <arg name="scan_topic" default="/sensing/lidar/scan"/>
-  <arg name="scan_with_obstacles_topic" default="/sensing/lidar/scan_with_obstacles"/>
+  <arg name="scan_topic" default="/sensing/virtual_lidar/scan"/>
+  <arg name="scan_with_obstacles_topic" default="/sensing/virtual_lidar/scan_with_obstacles"/>
   <arg name="v2x_topic" default="/v2x/vehicle_positions"/>
   <arg name="enable_v2x_obstacles" default="true"/>
   <arg name="lidar_frame_id" default="virtual_lidar"/>

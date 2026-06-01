@@ -6,7 +6,8 @@
   <arg name="device" default="auto"/>
   <arg name="model_type" default="tiny_lidar_net"/>
   <arg name="scan_topic" default="/sensing/lidar/scan"/>
-  <arg name="scan_with_obstacles_topic" default="/sensing/lidar/scan_with_obstacles"/>
+  <arg name="virtual_scan_topic" default="/sensing/virtual_lidar/scan"/>
+  <arg name="virtual_scan_with_obstacles_topic" default="/sensing/virtual_lidar/scan_with_obstacles"/>
   <arg name="v2x_topic" default="/v2x/vehicle_positions"/>
   <arg name="enable_v2x_obstacles" default="true"/>
   <arg name="lidar_frame_id" default="virtual_lidar"/>
@@ -18,8 +19,8 @@
     <include file="$(find-pkg-share laserscan_generator)/launch/laserscan_generator.launch.xml">
       <arg name="use_sim_time" value="$(var use_sim_time)"/>
       <arg name="csv_path" value="$(var csv_path)"/>
-      <arg name="scan_topic" value="$(var scan_topic)"/>
-      <arg name="scan_with_obstacles_topic" value="$(var scan_with_obstacles_topic)"/>
+      <arg name="scan_topic" value="$(var virtual_scan_topic)"/>
+      <arg name="scan_with_obstacles_topic" value="$(var virtual_scan_with_obstacles_topic)"/>
       <arg name="v2x_topic" value="$(var v2x_topic)"/>
       <arg name="enable_v2x_obstacles" value="$(var enable_v2x_obstacles)"/>
       <arg name="lidar_frame_id" value="$(var lidar_frame_id)"/>

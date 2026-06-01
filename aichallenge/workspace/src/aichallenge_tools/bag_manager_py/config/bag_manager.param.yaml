@@ -13,6 +13,8 @@
       # - /vehicle/status/velocity_status
       # - /localization/pose_with_covariance
       - /sensing/lidar/scan
+      - /sensing/virtual_lidar/scan
+      - /sensing/virtual_lidar/scan_with_obstacles
       - /tf
       - /tf_static
       - /localization/kinematic_state
