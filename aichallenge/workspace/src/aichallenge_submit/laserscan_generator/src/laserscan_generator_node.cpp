@@ -61,7 +61,7 @@ ScanGeneratorNode::ScanGeneratorNode() : Node("scan_generator_node")
 void ScanGeneratorNode::declare_and_get_params()
 {
     this->declare_parameter<std::string>("csv_path", "/path/to/your/lane_boundaries.csv");
-    this->declare_parameter<std::string>("lidar_frame_id", "laser_link");
+    this->declare_parameter<std::string>("lidar_frame_id", "virtual_lidar");
     this->declare_parameter<double>("fov_deg", 270.0);
     this->declare_parameter<double>("max_range", 100.0);
     this->declare_parameter<int>("num_rays", 1080);

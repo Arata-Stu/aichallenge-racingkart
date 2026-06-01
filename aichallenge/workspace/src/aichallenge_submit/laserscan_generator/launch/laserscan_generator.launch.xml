@@ -9,11 +9,15 @@
   <arg name="scan_with_obstacles_topic" default="/sensing/lidar/scan_with_obstacles"/>
   <arg name="v2x_topic" default="/v2x/vehicle_positions"/>
   <arg name="enable_v2x_obstacles" default="true"/>
+  <arg name="lidar_frame_id" default="virtual_lidar"/>
+  <arg name="publish_virtual_lidar_tf" default="true"/>
+  <arg name="virtual_lidar_parent_frame" default="lidar"/>
   
-  <node pkg="tf2_ros"
+  <node if="$(var publish_virtual_lidar_tf)"
+        pkg="tf2_ros"
         exec="static_transform_publisher"
-        name="static_tf_pub_laser"
-        args="0.0 0.0 0.0 0 0 0 sensor_kit_base_link laser"
+        name="static_tf_pub_virtual_lidar"
+        args="0.0 0.0 0.0 0 0 0 $(var virtual_lidar_parent_frame) $(var lidar_frame_id)"
         >
     <param name="use_sim_time" value="$(var use_sim_time)"/>
   </node>
@@ -27,6 +31,7 @@
     <param name="csv_path" value="$(var csv_path)"/>
     <param name="v2x_topic" value="$(var v2x_topic)"/>
     <param name="enable_v2x_obstacles" value="$(var enable_v2x_obstacles)"/>
+    <param name="lidar_frame_id" value="$(var lidar_frame_id)"/>
     
     <param name="use_sim_time" value="$(var use_sim_time)"/>
 
