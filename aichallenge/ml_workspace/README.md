@@ -1,6 +1,6 @@
 # ml_workspace
 
-機械学習（ML）関連の作業用ディレクトリです。データ収集（rosbag記録）や、学習・重み変換などの補助スクリプトを置きます。
+機械学習（ML）関連の作業用ディレクトリです。データ収集（rosbag記録）や、学習、学習済み重み管理などの補助スクリプトを置きます。
 
 ## ディレクトリ構成
 
@@ -31,8 +31,7 @@ ml_workspace/
    │  └─ model.py
    ├─ outputs/              # 学習ログ出力先（Hydraの既定）
    ├─ extract_data_from_bag.py
-   ├─ osm2csv.py
-   └─ convert_weight.py
+   └─ osm2csv.py
 ```
 
 ## 各項目の説明
@@ -41,4 +40,4 @@ ml_workspace/
 - `record_data.bash`: 学習用データ作成のために rosbag（mcap）を `rawdata/` 配下へ記録する補助スクリプトです。
 - `rawdata/`: 記録した rosbag（mcap）の保存先です（タイムスタンプ名のディレクトリが作られます）。
 - `train/`, `val/`: `rawdata/` から分けた rosbag（mcap）を置くためのディレクトリです（運用に応じて使います）。
-- `tiny_lidar_net/`: TinyLiDARNet 用のデータ変換・学習・重み変換コード一式です。使い方は `aichallenge/ml_workspace/tiny_lidar_net/README.md` を参照してください。
+- `tiny_lidar_net/`: TinyLiDARNet 用のデータ変換・学習コード一式です。PyTorchの`.pth`をROS 2側で直接利用します。使い方は `aichallenge/ml_workspace/tiny_lidar_net/README.md` を参照してください。

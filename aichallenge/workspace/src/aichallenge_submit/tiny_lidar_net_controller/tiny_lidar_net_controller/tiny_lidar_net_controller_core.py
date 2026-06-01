@@ -1,25 +1,27 @@
 import logging
 import numpy as np
+import torch
 from typing import Tuple
 
-from model.tinylidarnet import TinyLidarNetNp, TinyLidarNetSmallNp
+from model.tinylidarnet import TinyLidarNet, TinyLidarNetSmall
 
 
 class TinyLidarNetCore:
     """Core logic for the TinyLidarNet autonomous driving controller.
 
     This class manages the neural network model lifecycle, including initialization,
-    weight loading, input preprocessing (cleaning, resizing, normalizing), and
-    inference execution. It is designed to be framework-agnostic.
+    PyTorch weight loading, input preprocessing (cleaning, resizing, normalizing),
+    and inference execution.
 
     Attributes:
         input_dim (int): Dimension of the input vector expected by the model.
         output_dim (int): Dimension of the output vector (acceleration, steering).
         architecture (str): Model architecture type ('large' or 'small').
+        device (torch.device): Device used for PyTorch inference.
         acceleration (float): Fixed acceleration value used in 'fixed' control mode.
         control_mode (str): Control strategy ('ai' or 'fixed').
         max_range (float): Maximum LiDAR range used for normalization and clipping.
-        model (object): The instantiated neural network model.
+        model (torch.nn.Module): The instantiated neural network model.
         logger (logging.Logger): Logger instance.
     """
 
@@ -29,6 +31,7 @@ class TinyLidarNetCore:
         output_dim: int = 2,
         architecture: str = 'large',
         ckpt_path: str = '',
+        device: str = 'auto',
         acceleration: float = 0.1,
         control_mode: str = 'ai',
         max_range: float = 30.0
@@ -42,8 +45,10 @@ class TinyLidarNetCore:
                 Defaults to 2.
             architecture (str, optional): The model architecture to use ('large' or 'small').
                 Defaults to 'large'.
-            ckpt_path (str, optional): Path to the numpy weight file (.npy or .npz).
+            ckpt_path (str, optional): Path to the PyTorch checkpoint file (.pth or .pt).
                 Defaults to ''.
+            device (str, optional): PyTorch inference device ('auto', 'cpu', or 'cuda').
+                'auto' uses CUDA when available and CPU otherwise. Defaults to 'auto'.
             acceleration (float, optional): The constant acceleration value to apply
                 when control_mode is set to 'fixed'. Defaults to 0.1.
             control_mode (str, optional): The control mode to determine output behavior.
@@ -56,16 +61,22 @@ class TinyLidarNetCore:
         """
         self.input_dim = input_dim
         self.output_dim = output_dim
-        self.architecture = architecture
+        self.architecture = architecture.lower()
+        self.device = self._resolve_device(device)
         self.acceleration = acceleration
         self.control_mode = control_mode.lower()
         self.max_range = max_range
         self.logger = logging.getLogger(__name__)
 
         if self.architecture == 'small':
-            self.model = TinyLidarNetSmallNp(input_dim=self.input_dim, output_dim=self.output_dim)
+            self.model = TinyLidarNetSmall(input_dim=self.input_dim, output_dim=self.output_dim)
+        elif self.architecture in ('large', 'normal'):
+            self.model = TinyLidarNet(input_dim=self.input_dim, output_dim=self.output_dim)
         else:
-            self.model = TinyLidarNetNp(input_dim=self.input_dim, output_dim=self.output_dim)
+            raise ValueError(f"Unknown TinyLidarNet architecture: {architecture}")
+
+        self.model.to(self.device)
+        self.model.eval()
 
         if ckpt_path:
             self._load_weights(ckpt_path)
@@ -89,10 +100,12 @@ class TinyLidarNetCore:
         processed_ranges = self._preprocess_ranges(ranges)
 
         # Prepare input tensor: (1, 1, input_dim)
-        x = np.expand_dims(np.expand_dims(processed_ranges, axis=0), axis=1)
+        x = torch.from_numpy(processed_ranges.astype(np.float32, copy=False))
+        x = x.to(device=self.device).view(1, 1, self.input_dim)
 
         # 2. Inference
-        outputs = self.model(x)[0]
+        with torch.inference_mode():
+            outputs = self.model(x)[0].detach().cpu().numpy()
 
         # 3. Post-process
         if self.control_mode == "ai":
@@ -108,37 +121,77 @@ class TinyLidarNetCore:
         """Loads model weights from a file into the model parameters.
 
         Args:
-            path (str): Path to the .npy or .npz weight file.
+            path (str): Path to the .pth or .pt checkpoint file.
 
         Raises:
-            ValueError: If the weight file format is unsupported.
+            ValueError: If the checkpoint format is unsupported.
             IOError: If the file cannot be read.
         """
         try:
-            weights = np.load(path, allow_pickle=True)
+            try:
+                checkpoint = torch.load(path, map_location=self.device, weights_only=True)
+            except TypeError:
+                checkpoint = torch.load(path, map_location=self.device)
 
-            if isinstance(weights, np.lib.npyio.NpzFile):
-                weight_dict = dict(weights.items())
-            elif isinstance(weights, np.ndarray) and weights.dtype == object:
-                weight_dict = weights.item()
-            elif isinstance(weights, dict):
-                weight_dict = weights
-            else:
-                raise ValueError(f"Unsupported weight format type: {type(weights)}")
+            state_dict = self._extract_state_dict(checkpoint)
+            state_dict = self._normalize_state_dict_keys(state_dict)
+            self.model.load_state_dict(state_dict, strict=True)
+            self.model.eval()
 
-            loaded_count = 0
-            for key, value in weight_dict.items():
-                key_norm = key.replace('.', '_')
-
-                if key_norm in self.model.params:
-                    self.model.params[key_norm] = value
-                    loaded_count += 1
-
-            self.logger.info(f"Successfully loaded {loaded_count} parameters from {path}")
+            self.logger.info(f"Successfully loaded PyTorch checkpoint from {path}")
 
         except Exception as e:
             self.logger.error(f"Failed to load weights from {path}: {e}")
             raise e
+
+    def _resolve_device(self, device: str) -> torch.device:
+        """Resolves the configured device string into a PyTorch device."""
+        requested = (device or 'auto').lower()
+
+        if requested == 'auto':
+            return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        if requested == 'cpu':
+            return torch.device('cpu')
+
+        if requested.startswith('cuda'):
+            if not torch.cuda.is_available():
+                raise RuntimeError("model.device is set to 'cuda', but CUDA is not available.")
+            return torch.device(requested)
+
+        raise ValueError("model.device must be one of: 'auto', 'cpu', 'cuda'.")
+
+    def _extract_state_dict(self, checkpoint) -> dict:
+        """Extracts a state_dict from common PyTorch checkpoint layouts."""
+        if not isinstance(checkpoint, dict):
+            raise ValueError(f"Unsupported checkpoint type: {type(checkpoint)}")
+
+        for key in ('state_dict', 'model_state_dict'):
+            value = checkpoint.get(key)
+            if isinstance(value, dict):
+                return value
+
+        if all(torch.is_tensor(value) for value in checkpoint.values()):
+            return checkpoint
+
+        raise ValueError("Checkpoint does not contain a PyTorch state_dict.")
+
+    def _normalize_state_dict_keys(self, state_dict: dict) -> dict:
+        """Normalizes common wrapper prefixes and legacy converted key names."""
+        normalized = {}
+
+        for key, value in state_dict.items():
+            if key.startswith('module.'):
+                key = key[len('module.'):]
+
+            if key.endswith('_weight'):
+                key = f"{key[:-len('_weight')]}.weight"
+            elif key.endswith('_bias'):
+                key = f"{key[:-len('_bias')]}.bias"
+
+            normalized[key] = value
+
+        return normalized
 
     def _preprocess_ranges(self, ranges: np.ndarray) -> np.ndarray:
         """Cleans, resizes, and normalizes LiDAR ranges.

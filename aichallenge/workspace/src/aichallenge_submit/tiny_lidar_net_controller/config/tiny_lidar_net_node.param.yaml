@@ -4,9 +4,10 @@
     
     model:
       input_dim: 750            # LiDARスキャンの入力次元
-      output_dim: 2              # 出力（steering, throttleなど）
-      architecture: "normal"      # "normal" または "small"
-      ckpt_path: "/path/to/tinylidarnet_weights.npy"
+      output_dim: 2              # 出力（acceleration, steering）
+      architecture: "large"      # "large" または "small"
+      ckpt_path: "/path/to/tinylidarnet_weights.pth"
+      device: "auto"             # "auto", "cpu", "cuda"
 
     max_range: 30.0              # LiDARの最大レンジ（メートル）
     control_mode: "fixed"          # "ai" または "fixed"

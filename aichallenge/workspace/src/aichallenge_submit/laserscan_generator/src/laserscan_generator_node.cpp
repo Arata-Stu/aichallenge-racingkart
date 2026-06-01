@@ -8,6 +8,7 @@
 #include <cmath>
 #include <algorithm>
 #include <limits>
+#include <utility>
 
 ScanGeneratorNode::ScanGeneratorNode() : Node("scan_generator_node")
 {
@@ -17,11 +18,13 @@ ScanGeneratorNode::ScanGeneratorNode() : Node("scan_generator_node")
     this->load_walls_from_csv();
 
     scan_publisher_ = this->create_publisher<sensor_msgs::msg::LaserScan>("scan", 10);
+    scan_with_obstacles_publisher_ = this->create_publisher<sensor_msgs::msg::LaserScan>("scan_with_obstacles", 10);
     
     if (debug_) {
         const auto transient_local_qos = rclcpp::QoS(1).transient_local();
         wall_marker_publisher_ = this->create_publisher<Marker>("~/debug/walls", transient_local_qos);
         hit_points_marker_publisher_ = this->create_publisher<Marker>("~/debug/scan_hit_points", 10);
+        obstacle_marker_publisher_ = this->create_publisher<Marker>("~/debug/v2x_obstacles", 10);
         RCLCPP_INFO(this->get_logger(), "Debug mode is ON. Publishing markers.");
         publish_wall_markers();
     }
@@ -32,6 +35,18 @@ ScanGeneratorNode::ScanGeneratorNode() : Node("scan_generator_node")
             std::lock_guard<std::mutex> lock(pose_mutex_);
             current_pose_ = msg;
         });
+
+    if (enable_v2x_obstacles_) {
+        const auto v2x_qos = rclcpp::QoS(rclcpp::KeepLast(10)).reliable().durability_volatile();
+        v2x_subscriber_ = this->create_subscription<V2XVehiclePositionArray>(
+            v2x_topic_, v2x_qos, [this](const V2XVehiclePositionArray::SharedPtr msg) {
+                this->v2x_callback(msg);
+            });
+        RCLCPP_INFO(
+            this->get_logger(),
+            "V2X vehicle obstacles enabled. Subscribing to %s, self_vehicle_id=%s",
+            v2x_topic_.c_str(), self_vehicle_id_.c_str());
+    }
     
     if (timer_hz_ <= 0.0) {
         RCLCPP_ERROR(this->get_logger(), "timer_hz must be positive. Shutting down.");
@@ -54,6 +69,13 @@ void ScanGeneratorNode::declare_and_get_params()
     this->declare_parameter<double>("timer_hz", 10.0);
     this->declare_parameter<bool>("debug", false);
     this->declare_parameter<std::string>("map_frame_id", "map");
+    this->declare_parameter<bool>("enable_v2x_obstacles", true);
+    this->declare_parameter<std::string>("v2x_topic", "/v2x/vehicle_positions");
+    this->declare_parameter<std::string>("self_vehicle_id", "d1");
+    this->declare_parameter<double>("obstacle_vehicle_length", 2.0);
+    this->declare_parameter<double>("obstacle_vehicle_width", 1.45);
+    this->declare_parameter<double>("obstacle_timeout_sec", 1.0);
+    this->declare_parameter<double>("obstacle_heading_min_motion", 0.05);
 
     this->get_parameter("csv_path", csv_path_);
     this->get_parameter("lidar_frame_id", lidar_frame_id_);
@@ -64,6 +86,13 @@ void ScanGeneratorNode::declare_and_get_params()
     this->get_parameter("timer_hz", timer_hz_);
     this->get_parameter("debug", debug_);
     this->get_parameter("map_frame_id", map_frame_id_);
+    this->get_parameter("enable_v2x_obstacles", enable_v2x_obstacles_);
+    this->get_parameter("v2x_topic", v2x_topic_);
+    this->get_parameter("self_vehicle_id", self_vehicle_id_);
+    this->get_parameter("obstacle_vehicle_length", obstacle_vehicle_length_);
+    this->get_parameter("obstacle_vehicle_width", obstacle_vehicle_width_);
+    this->get_parameter("obstacle_timeout_sec", obstacle_timeout_sec_);
+    this->get_parameter("obstacle_heading_min_motion", obstacle_heading_min_motion_);
 }
 
 void ScanGeneratorNode::load_walls_from_csv()
@@ -168,42 +197,30 @@ void ScanGeneratorNode::run_simulation(const PoseWithCovarianceStamped::ConstSha
     scan_msg->ranges.resize(num_rays_, std::numeric_limits<float>::infinity());
     
     std::vector<geometry_msgs::msg::Point> hit_points;
+    add_segments_to_scan(
+        walls_, robot_pos, yaw, angle_min, angle_increment, pose_msg->pose.pose.position.z,
+        *scan_msg, debug_ ? &hit_points : nullptr);
 
-    for (int i = 0; i < num_rays_; ++i) {
-        double ray_angle = yaw + angle_min + i * angle_increment;
-        Point2D ray_end = {
-            robot_pos.x + max_range_ * std::cos(ray_angle),
-            robot_pos.y + max_range_ * std::sin(ray_angle)
-        };
-        double min_dist_sq = max_range_ * max_range_;
-        std::optional<Point2D> closest_intersection = std::nullopt;
+    auto scan_with_obstacles_msg = std::make_unique<sensor_msgs::msg::LaserScan>(*scan_msg);
+    std::vector<VehicleObstacle> obstacles;
+    std::vector<std::pair<Point2D, Point2D>> obstacle_segments;
 
-        for (const auto& wall : walls_) {
-            auto intersection = get_line_segment_intersection(robot_pos, ray_end, wall.first, wall.second);
-            if (intersection) {
-                double dist_sq = std::pow(intersection->x - robot_pos.x, 2) + std::pow(intersection->y - robot_pos.y, 2);
-                if (dist_sq < min_dist_sq) {
-                    min_dist_sq = dist_sq;
-                    closest_intersection = intersection;
-                }
-            }
+    if (enable_v2x_obstacles_) {
+        obstacles = get_recent_obstacles(rclcpp::Time(scan_msg->header.stamp));
+        for (const auto& obstacle : obstacles) {
+            const auto segments = build_vehicle_segments(obstacle);
+            obstacle_segments.insert(obstacle_segments.end(), segments.begin(), segments.end());
         }
 
-        if (min_dist_sq < max_range_ * max_range_) {
-            double distance = std::sqrt(min_dist_sq);
-            if (distance >= range_min_) {
-                scan_msg->ranges[i] = static_cast<float>(distance);
-                if (debug_ && closest_intersection) {
-                    geometry_msgs::msg::Point p;
-                    p.x = closest_intersection->x;
-                    p.y = closest_intersection->y;
-                    p.z = pose_msg->pose.pose.position.z; 
-                    hit_points.push_back(p);
-                }
-            }
+        if (!obstacle_segments.empty()) {
+            add_segments_to_scan(
+                obstacle_segments, robot_pos, yaw, angle_min, angle_increment,
+                pose_msg->pose.pose.position.z, *scan_with_obstacles_msg, nullptr);
         }
     }
+
     scan_publisher_->publish(std::move(scan_msg));
+    scan_with_obstacles_publisher_->publish(std::move(scan_with_obstacles_msg));
 
     if (debug_ && !hit_points.empty()) {
         Marker points_marker;
@@ -221,9 +238,169 @@ void ScanGeneratorNode::run_simulation(const PoseWithCovarianceStamped::ConstSha
         points_marker.points = hit_points;
         hit_points_marker_publisher_->publish(points_marker);
     }
+
+    if (debug_ && enable_v2x_obstacles_) {
+        publish_obstacle_markers(obstacles);
+    }
 }
 
-std::optional<Point2D> ScanGeneratorNode::get_line_segment_intersection(Point2D p1, Point2D p2, Point2D p3, Point2D p4)
+void ScanGeneratorNode::v2x_callback(const V2XVehiclePositionArray::SharedPtr msg)
+{
+    const auto now = this->get_clock()->now();
+    rclcpp::Time array_stamp(msg->header.stamp);
+    if (array_stamp.nanoseconds() == 0) {
+        array_stamp = now;
+    }
+
+    std::vector<VehicleObstacle> next_obstacles;
+    std::lock_guard<std::mutex> lock(v2x_mutex_);
+
+    for (const auto& vehicle : msg->vehicles) {
+        if (vehicle.vehicle_id == self_vehicle_id_) {
+            continue;
+        }
+
+        if (!std::isfinite(vehicle.position.x) || !std::isfinite(vehicle.position.y)) {
+            continue;
+        }
+
+        const std::string frame_id =
+            vehicle.header.frame_id.empty() ? msg->header.frame_id : vehicle.header.frame_id;
+        if (!frame_id.empty() && frame_id != map_frame_id_) {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(), *this->get_clock(), 5000,
+                "V2X vehicle frame_id is '%s', expected '%s'. Using coordinates as-is.",
+                frame_id.c_str(), map_frame_id_.c_str());
+        }
+
+        VehicleObstacle obstacle;
+        obstacle.vehicle_id = vehicle.vehicle_id;
+        obstacle.center = {
+            vehicle.position.x - map_offset_.x,
+            vehicle.position.y - map_offset_.y
+        };
+
+        rclcpp::Time vehicle_stamp(vehicle.header.stamp);
+        obstacle.stamp = vehicle_stamp.nanoseconds() == 0 ? array_stamp : vehicle_stamp;
+
+        obstacle.yaw = 0.0;
+        const auto previous_it = previous_obstacles_by_id_.find(obstacle.vehicle_id);
+        if (previous_it != previous_obstacles_by_id_.end()) {
+            const auto& previous = previous_it->second;
+            const double dx = obstacle.center.x - previous.center.x;
+            const double dy = obstacle.center.y - previous.center.y;
+            const double motion = std::hypot(dx, dy);
+            obstacle.yaw = motion >= obstacle_heading_min_motion_
+                ? std::atan2(dy, dx)
+                : previous.yaw;
+        }
+
+        next_obstacles.push_back(obstacle);
+    }
+
+    previous_obstacles_by_id_.clear();
+    for (const auto& obstacle : next_obstacles) {
+        previous_obstacles_by_id_[obstacle.vehicle_id] = obstacle;
+    }
+    latest_obstacles_ = std::move(next_obstacles);
+}
+
+void ScanGeneratorNode::add_segments_to_scan(
+    const std::vector<std::pair<Point2D, Point2D>>& segments,
+    const Point2D& robot_pos,
+    double robot_yaw,
+    double angle_min,
+    double angle_increment,
+    double hit_points_z,
+    sensor_msgs::msg::LaserScan& scan_msg,
+    std::vector<geometry_msgs::msg::Point>* hit_points)
+{
+    for (int i = 0; i < num_rays_; ++i) {
+        const double ray_angle = robot_yaw + angle_min + i * angle_increment;
+        const Point2D ray_end = {
+            robot_pos.x + max_range_ * std::cos(ray_angle),
+            robot_pos.y + max_range_ * std::sin(ray_angle)
+        };
+
+        double best_distance = std::isfinite(scan_msg.ranges[i])
+            ? static_cast<double>(scan_msg.ranges[i])
+            : max_range_;
+        std::optional<Point2D> closest_intersection = std::nullopt;
+
+        for (const auto& segment : segments) {
+            const auto intersection =
+                get_line_segment_intersection(robot_pos, ray_end, segment.first, segment.second);
+            if (!intersection) {
+                continue;
+            }
+
+            const double distance =
+                std::hypot(intersection->x - robot_pos.x, intersection->y - robot_pos.y);
+            if (distance >= range_min_ && distance < best_distance) {
+                best_distance = distance;
+                closest_intersection = intersection;
+            }
+        }
+
+        if (closest_intersection) {
+            scan_msg.ranges[i] = static_cast<float>(best_distance);
+            if (hit_points != nullptr) {
+                geometry_msgs::msg::Point p;
+                p.x = closest_intersection->x;
+                p.y = closest_intersection->y;
+                p.z = hit_points_z;
+                hit_points->push_back(p);
+            }
+        }
+    }
+}
+
+std::vector<VehicleObstacle> ScanGeneratorNode::get_recent_obstacles(const rclcpp::Time& now)
+{
+    std::vector<VehicleObstacle> obstacles;
+    std::lock_guard<std::mutex> lock(v2x_mutex_);
+
+    for (const auto& obstacle : latest_obstacles_) {
+        if (obstacle_timeout_sec_ > 0.0) {
+            const double age_sec = (now - obstacle.stamp).seconds();
+            if (age_sec > obstacle_timeout_sec_) {
+                continue;
+            }
+        }
+        obstacles.push_back(obstacle);
+    }
+
+    return obstacles;
+}
+
+std::vector<std::pair<Point2D, Point2D>> ScanGeneratorNode::build_vehicle_segments(
+    const VehicleObstacle& obstacle) const
+{
+    const double half_length = obstacle_vehicle_length_ * 0.5;
+    const double half_width = obstacle_vehicle_width_ * 0.5;
+    const double cos_yaw = std::cos(obstacle.yaw);
+    const double sin_yaw = std::sin(obstacle.yaw);
+
+    const Point2D forward = {cos_yaw * half_length, sin_yaw * half_length};
+    const Point2D left = {-sin_yaw * half_width, cos_yaw * half_width};
+
+    const std::array<Point2D, 4> corners = {{
+        {obstacle.center.x + forward.x + left.x, obstacle.center.y + forward.y + left.y},
+        {obstacle.center.x + forward.x - left.x, obstacle.center.y + forward.y - left.y},
+        {obstacle.center.x - forward.x - left.x, obstacle.center.y - forward.y - left.y},
+        {obstacle.center.x - forward.x + left.x, obstacle.center.y - forward.y + left.y}
+    }};
+
+    return {
+        {corners[0], corners[1]},
+        {corners[1], corners[2]},
+        {corners[2], corners[3]},
+        {corners[3], corners[0]}
+    };
+}
+
+std::optional<Point2D> ScanGeneratorNode::get_line_segment_intersection(
+    Point2D p1, Point2D p2, Point2D p3, Point2D p4) const
 {
     double x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
     double x3 = p3.x, y3 = p3.y, x4 = p4.x, y4 = p4.y;
@@ -266,6 +443,44 @@ void ScanGeneratorNode::publish_wall_markers()
     }
     wall_marker_publisher_->publish(wall_marker);
     RCLCPP_INFO(this->get_logger(), "Published %zu wall segments to marker topic.", walls_.size());
+}
+
+void ScanGeneratorNode::publish_obstacle_markers(const std::vector<VehicleObstacle>& obstacles)
+{
+    if (!obstacle_marker_publisher_) {
+        return;
+    }
+
+    Marker obstacle_marker;
+    obstacle_marker.header.frame_id = map_frame_id_;
+    obstacle_marker.header.stamp = this->get_clock()->now();
+    obstacle_marker.ns = "v2x_vehicle_obstacles";
+    obstacle_marker.id = 0;
+    obstacle_marker.type = Marker::LINE_LIST;
+    obstacle_marker.action = obstacles.empty() ? Marker::DELETE : Marker::ADD;
+    obstacle_marker.pose.orientation.w = 1.0;
+    obstacle_marker.scale.x = 0.08;
+    obstacle_marker.color.r = 1.0f;
+    obstacle_marker.color.g = 0.55f;
+    obstacle_marker.color.a = 0.95f;
+
+    for (const auto& obstacle : obstacles) {
+        const auto segments = build_vehicle_segments(obstacle);
+        for (const auto& segment : segments) {
+            geometry_msgs::msg::Point p1;
+            geometry_msgs::msg::Point p2;
+            p1.x = segment.first.x;
+            p1.y = segment.first.y;
+            p1.z = 0.2;
+            p2.x = segment.second.x;
+            p2.y = segment.second.y;
+            p2.z = 0.2;
+            obstacle_marker.points.push_back(p1);
+            obstacle_marker.points.push_back(p2);
+        }
+    }
+
+    obstacle_marker_publisher_->publish(obstacle_marker);
 }
 
 

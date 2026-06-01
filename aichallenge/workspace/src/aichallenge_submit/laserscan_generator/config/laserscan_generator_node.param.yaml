@@ -10,3 +10,11 @@
 
     debug: true
     map_frame_id: map
+
+    enable_v2x_obstacles: true
+    v2x_topic: /v2x/vehicle_positions
+    self_vehicle_id: d1
+    obstacle_vehicle_length: 2.0
+    obstacle_vehicle_width: 1.45
+    obstacle_timeout_sec: 1.0
+    obstacle_heading_min_motion: 0.05

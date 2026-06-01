@@ -12,6 +12,7 @@ model:
   output_dim: 2
 
 train:
+  device: "auto"  # "auto", "cpu", "cuda"
   batch_size: 64
   num_workers: 4
   epochs: 100

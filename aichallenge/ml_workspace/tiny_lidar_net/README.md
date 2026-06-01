@@ -27,11 +27,17 @@ data.train_dir=/path/to/train_dir \
 data.val_dir=/path/to/val_dir \
 model.name='TinyLidarNet' \
 loss.steer_weight=1.0 \
-loss.accel_weight=0.0 \ 
+loss.accel_weight=0.0 \
+train.device=auto
 ```
 
-## 重みの形式変換
-採点環境において実行できるように、pytorchではなくnumpyを用います。そのため、`.pth`から`.npy/.npz`に重みを変換します。
+## 学習済み重みの配置
+ROS 2側のTinyLiDARNetはPyTorchで推論します。`train.py`で保存された`.pth`をそのまま利用できるため、NumPy形式への重み変換は不要です。
+
+たとえば、学習済みの重みをcontroller側に配置してlaunch引数で指定します。
 ```bash
-python3 convert_weight.py --model tinylidarnet --ckpt ./ckpts/weight.pth
+cp /path/to/weight.pth ../workspace/src/aichallenge_submit/tiny_lidar_net_controller/ckpt/tinylidarnet_weights.pth
+ros2 launch tiny_lidar_net_controller tiny_lidar_net.launch.xml \
+  ckpt_path:="$(ros2 pkg prefix tiny_lidar_net_controller)/share/tiny_lidar_net_controller/ckpt/tinylidarnet_weights.pth" \
+  device:=auto
 ```

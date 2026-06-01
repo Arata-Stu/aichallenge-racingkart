@@ -13,6 +13,22 @@ from lib.data import MultiSeqConcatDataset
 from lib.loss import WeightedSmoothL1Loss
 
 
+def resolve_device(device_name: str) -> torch.device:
+    requested = (device_name or "auto").lower()
+
+    if requested == "auto":
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if requested == "cpu":
+        return torch.device("cpu")
+
+    if requested.startswith("cuda"):
+        if not torch.cuda.is_available():
+            raise RuntimeError("train.device is set to 'cuda', but CUDA is not available.")
+        return torch.device(requested)
+
+    raise ValueError("train.device must be one of: 'auto', 'cpu', 'cuda'.")
+
 
 def clean_numerical_tensor(x: torch.Tensor) -> torch.Tensor:
     """NaN, infを安全に除去"""
@@ -27,7 +43,7 @@ def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
     print("---------------------------")
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = resolve_device(cfg.train.get("device", "auto"))
     print(f"Using device: {device}")
 
     # === Dataset ===
@@ -65,7 +81,7 @@ def main(cfg: DictConfig):
         ).to(device)
 
     if cfg.train.pretrained_path:
-        model.load_state_dict(torch.load(cfg.train.pretrained_path))
+        model.load_state_dict(torch.load(cfg.train.pretrained_path, map_location=device))
         print(f"[INFO] Loaded pretrained model from {cfg.train.pretrained_path}")
 
     # === Loss & Optimizer ===
