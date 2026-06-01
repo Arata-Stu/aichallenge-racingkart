@@ -162,6 +162,12 @@
     <include file="$(find-pkg-share aichallenge_submit_launch)/launch/control/joycon.launch.xml"/>
   </group>
 
+  <group if="$(eval &quot;'$(var control_method)' == 'joycon' and '$(var simulation)' == 'true'&quot;)">
+    <include file="$(find-pkg-share laserscan_generator)/launch/laserscan_generator.launch.xml">
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    </include>
+  </group>
+
   <!-- Map -->
   <group>
     <push-ros-namespace namespace="map"/>
