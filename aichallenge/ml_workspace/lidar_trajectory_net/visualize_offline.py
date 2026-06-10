@@ -163,6 +163,14 @@ def plot_sample(
     obstacle_x = obstacle_scan * np.cos(angles)
     obstacle_y = obstacle_scan * np.sin(angles)
     plot_step = max(1, len(angles) // 720)
+    origin = np.zeros((1, 2), dtype=np.float32)
+    target_with_origin = np.concatenate([origin, target], axis=0)
+    prediction_with_origin = (
+        None if prediction is None else np.concatenate([origin, prediction], axis=0)
+    )
+    control_with_origin = (
+        None if control_points is None else np.concatenate([origin, control_points], axis=0)
+    )
 
     figure, axes = plt.subplots(2, 2, figsize=(15, 11), constrained_layout=True)
     ax_scan, ax_profile, ax_history, ax_path = axes.flat
@@ -171,9 +179,9 @@ def plot_sample(
         free_x[::plot_step],
         free_y[::plot_step],
         ".",
-        color="#377eb8",
+        color="#777777",
         markersize=2,
-        alpha=0.65,
+        alpha=0.55,
         label="virtual scan",
     )
     ax_scan.plot(
@@ -190,12 +198,44 @@ def plot_sample(
             obstacle_x[obstacle_mask],
             obstacle_y[obstacle_mask],
             s=15,
-            color="#e41a1c",
+            color="#ff7f00",
             label="obstacle difference",
             zorder=3,
         )
+    ax_scan.plot(
+        target_with_origin[:, 0],
+        target_with_origin[:, 1],
+        "-o",
+        color="#377eb8",
+        markersize=3,
+        linewidth=2.2,
+        label="ground truth",
+        zorder=4,
+    )
+    if prediction_with_origin is not None:
+        ax_scan.plot(
+            prediction_with_origin[:, 0],
+            prediction_with_origin[:, 1],
+            "-o",
+            color="#e41a1c",
+            markersize=3,
+            linewidth=2.2,
+            label="prediction",
+            zorder=5,
+        )
+    if control_with_origin is not None:
+        ax_scan.plot(
+            control_with_origin[:, 0],
+            control_with_origin[:, 1],
+            "--s",
+            color="#984ea3",
+            markersize=4,
+            linewidth=1.2,
+            label="Bezier control points",
+            zorder=6,
+        )
     ax_scan.arrow(0.0, 0.0, 2.0, 0.0, width=0.08, color="black", length_includes_head=True)
-    ax_scan.set_title("Latest scan in ego frame")
+    ax_scan.set_title("Latest scan and future trajectory in ego frame")
     ax_scan.set_xlabel("forward x [m]")
     ax_scan.set_ylabel("left y [m]")
     ax_scan.set_aspect("equal", adjustable="box")
@@ -215,7 +255,7 @@ def plot_sample(
         0.0,
         diff,
         where=obstacle_mask,
-        color="#e41a1c",
+        color="#ff7f00",
         alpha=0.45,
         label="diff",
     )
@@ -242,8 +282,6 @@ def plot_sample(
     ax_history.set_ylabel("history frame (old to new)")
     figure.colorbar(image, ax=ax_history, label="difference [m]")
 
-    origin = np.zeros((1, 2), dtype=np.float32)
-    target_with_origin = np.concatenate([origin, target], axis=0)
     ax_path.plot(
         target_with_origin[:, 0],
         target_with_origin[:, 1],
@@ -256,7 +294,6 @@ def plot_sample(
     ade = None
     fde = None
     if prediction is not None:
-        prediction_with_origin = np.concatenate([origin, prediction], axis=0)
         ax_path.plot(
             prediction_with_origin[:, 0],
             prediction_with_origin[:, 1],
@@ -268,7 +305,6 @@ def plot_sample(
         )
         ade, fde = trajectory_metrics(prediction, target)
     if control_points is not None:
-        control_with_origin = np.concatenate([origin, control_points], axis=0)
         ax_path.plot(
             control_with_origin[:, 0],
             control_with_origin[:, 1],

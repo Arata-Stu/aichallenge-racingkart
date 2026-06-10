@@ -65,7 +65,7 @@ visualizations/train/
 各`sample_*.png`では以下を同時に表示します。
 
 ```text
-latest virtual scan / scan_with_obstacles のXY表示
+latest virtual scan / scan_with_obstacles とtrajectoryを統合したXY表示
 2本のscanとdiffのray profile
 T frame分のdiff history
 ground-truth trajectory
