@@ -28,6 +28,8 @@
 
     path:
       frame_id: "map"
+      z_mode: "fixed"  # "fixed" or "odometry"
+      fixed_z: 6.7     # Lanelet elevation 6.5 m + visualization offset
       target_velocity_mps: 3.0
       include_current_pose: true
       publish_debug_path: true

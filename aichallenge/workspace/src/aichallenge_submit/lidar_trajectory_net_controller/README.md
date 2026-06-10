@@ -21,6 +21,17 @@ output/debug_path  nav_msgs/msg/Path
 モデルのBezier出力はego座標です。Odometryの姿勢を使ってmap座標へ変換してから
 `PathWithLaneId`としてpublishします。制御commandはpublishしません。
 
+コースのLanelet標高は`6.5 m`です。既定ではPathを`z=6.7 m`へ配置し、
+Lanelet面との重なりを避けてRViz上で表示します。
+
+```yaml
+path:
+  z_mode: "fixed"
+  fixed_z: 6.7
+```
+
+Odometryの高さを使う場合は`path.z_mode:="odometry"`へ変更できます。
+
 ## Build
 
 ```bash

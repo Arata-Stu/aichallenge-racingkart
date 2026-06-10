@@ -60,6 +60,14 @@ class LidarTrajectoryNetNode(Node):
             float(self.get_parameter("max_odometry_age_sec").value) * 1e9
         )
         self.path_frame_id = str(self.get_parameter("path.frame_id").value)
+        self.path_z_mode = str(
+            self.get_parameter("path.z_mode").value
+        ).lower()
+        self.path_fixed_z = float(
+            self.get_parameter("path.fixed_z").value
+        )
+        if self.path_z_mode not in ("fixed", "odometry"):
+            raise ValueError("path.z_mode must be 'fixed' or 'odometry'.")
         self.target_velocity_mps = float(
             self.get_parameter("path.target_velocity_mps").value
         )
@@ -196,6 +204,8 @@ class LidarTrajectoryNetNode(Node):
         self.declare_parameter("max_history_gap_sec", 0.2)
         self.declare_parameter("max_odometry_age_sec", 0.2)
         self.declare_parameter("path.frame_id", "map")
+        self.declare_parameter("path.z_mode", "fixed")
+        self.declare_parameter("path.fixed_z", 6.7)
         self.declare_parameter("path.target_velocity_mps", 3.0)
         self.declare_parameter("path.include_current_pose", True)
         self.declare_parameter("path.publish_debug_path", True)
@@ -312,6 +322,11 @@ class LidarTrajectoryNetNode(Node):
             + cos_yaw * ego_points[:, 1]
         )
         path_yaws = self._calculate_path_yaws(map_points, origin_yaw)
+        path_z = (
+            self.path_fixed_z
+            if self.path_z_mode == "fixed"
+            else float(origin_pose.position.z)
+        )
 
         path = PathWithLaneId()
         path.header.stamp = stamp
@@ -325,7 +340,7 @@ class LidarTrajectoryNetNode(Node):
             pose = Pose()
             pose.position.x = float(x)
             pose.position.y = float(y)
-            pose.position.z = float(origin_pose.position.z)
+            pose.position.z = path_z
             pose.orientation = yaw_to_quaternion(float(yaw))
 
             path_point = PathPointWithLaneId()
