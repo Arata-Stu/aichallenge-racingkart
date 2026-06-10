@@ -87,12 +87,27 @@ python3 train.py \
   data.train_dir=/path/to/train \
   data.val_dir=/path/to/val \
   data.history_length=8 \
-  data.future_num_points=20 \
-  data.future_stride=2 \
+  data.future_num_points=25 \
+  data.future_stride=4 \
   train.device=auto
 ```
 
-`future_num_points` と `future_stride` を変えることで、教師 path の点数と時間方向の間隔を調整できます。たとえば generator が 50 Hz なら、`future_stride=5` は 0.1 秒間隔です。
+`future_num_points` と `future_stride` を変えることで、教師 path の点数と時間方向の間隔を調整できます。
+
+```text
+prediction_horizon_sec =
+  future_num_points * future_stride / scan_frequency_hz
+```
+
+既定値は50 Hzを想定した`25 points * stride 4 = 2.0 sec`です。1点の間隔は0.08秒です。
+
+```text
+20 points, stride 2 -> 0.8 sec
+25 points, stride 4 -> 2.0 sec (default)
+30 points, stride 5 -> 3.0 sec
+```
+
+pathを遠くまで伸ばすには、点数だけでなく`future_stride`を大きくして教師trajectoryの終端時刻を先へ移す必要があります。
 
 checkpointには重みに加えて、学習時のmodel/data設定、epoch、validation lossが保存されます。旧形式の重みのみの`.pth`も読み込み可能です。
 

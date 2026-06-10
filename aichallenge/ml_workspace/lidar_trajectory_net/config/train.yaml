@@ -6,8 +6,9 @@ data:
   # channels = [virtual_scan, virtual_scan_with_obstacles, diff]
   history_length: 8
   history_stride: 1
-  future_num_points: 20
-  future_stride: 2
+  # At 50 Hz: 25 points * stride 4 / 50 = 2.0 sec prediction horizon.
+  future_num_points: 25
+  future_stride: 4
   max_range: 30.0
 
   # Filters for unstable or very long targets in ego coordinates.
