@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_LIDAR_TRAJECTORY_CKPT="/aichallenge/ml_workspace/lidar_trajectory_net/checkpoints/best_model.pth"
 
 MODES=(
     "awsim"
@@ -62,7 +63,7 @@ select_mode() {
 if [ "$#" -eq 0 ]; then
     if [ ! -t 0 ]; then
         echo "Interactive mode requires a terminal." >&2
-        echo "Usage: $0 <mode> [domain_id] [output_root]" >&2
+        echo "Usage: $0 <mode> [domain_id] [output_root] [checkpoint_path]" >&2
         exit 2
     fi
 
@@ -76,12 +77,22 @@ if [ "$#" -eq 0 ]; then
     read -r -p "Output root [${default_out_root}]: " out_root
     out_root="${out_root:-${default_out_root}}"
 
+    checkpoint_path=""
+    if [[ "${mode}" == awsim-lidar-trajectory-net* ]]; then
+        read -r -p "Checkpoint path [${DEFAULT_LIDAR_TRAJECTORY_CKPT}]: " checkpoint_path
+        checkpoint_path="${checkpoint_path:-${DEFAULT_LIDAR_TRAJECTORY_CKPT}}"
+    fi
+
     echo
     echo "Starting mode=${mode}, ROS_DOMAIN_ID=${domain_id}, output=${out_root}/d${domain_id}"
+    if [ -n "${checkpoint_path}" ]; then
+        echo "Checkpoint=${checkpoint_path}"
+    fi
 else
     mode="${1}"
     domain_id="${2:-${ROS_DOMAIN_ID:-1}}"
     out_root="${3:-/output/manual}"
+    checkpoint_path="${4:-}"
 fi
 
 child_pid=""
@@ -144,9 +155,11 @@ trap on_term TERM
 trap cleanup_child EXIT
 
 if command -v setsid >/dev/null 2>&1; then
-    setsid bash "${SCRIPT_DIR}/run_autoware.bash" "${mode}" "${domain_id}" "${out_root}" &
+    setsid bash "${SCRIPT_DIR}/run_autoware.bash" \
+        "${mode}" "${domain_id}" "${out_root}" "${checkpoint_path}" &
 else
-    bash "${SCRIPT_DIR}/run_autoware.bash" "${mode}" "${domain_id}" "${out_root}" &
+    bash "${SCRIPT_DIR}/run_autoware.bash" \
+        "${mode}" "${domain_id}" "${out_root}" "${checkpoint_path}" &
 fi
 
 child_pid="$!"

@@ -60,6 +60,17 @@ RVizなしの場合：
 ./run_autoware_manual.bash awsim-lidar-trajectory-net-no-viz 1
 ```
 
+対話メニューではLiDAR Trajectory Net modeを選んだ場合にcheckpoint pathも入力できます。
+非対話起動では第4引数で指定します。
+
+```bash
+./run_autoware_manual.bash \
+  awsim-lidar-trajectory-net \
+  1 \
+  /output/manual \
+  /aichallenge/ml_workspace/lidar_trajectory_net/checkpoints/experiment_01.pth
+```
+
 ## Build
 
 ```bash

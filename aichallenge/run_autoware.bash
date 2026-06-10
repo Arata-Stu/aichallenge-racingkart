@@ -4,6 +4,7 @@ mode="${1}"
 id="${2:-${ROS_DOMAIN_ID:-0}}"
 out_dir="${3:+${3}/d${id}}"
 out_dir="${out_dir:-/output/$(date +%Y%m%d-%H%M%S)/d${id}}"
+checkpoint_path="${4:-}"
 launch_file="aichallenge_system.launch.xml"
 
 case "${mode}" in
@@ -23,9 +24,15 @@ case "${mode}" in
     ;;
 "awsim-lidar-trajectory-net")
     opts=("simulation:=true" "use_sim_time:=true" "run_rviz:=true" "control_method:=lidar_trajectory_net")
+    if [ -n "${checkpoint_path}" ]; then
+        opts+=("lidar_trajectory_ckpt_path:=${checkpoint_path}")
+    fi
     ;;
 "awsim-lidar-trajectory-net-no-viz")
     opts=("simulation:=true" "use_sim_time:=true" "run_rviz:=false" "control_method:=lidar_trajectory_net")
+    if [ -n "${checkpoint_path}" ]; then
+        opts+=("lidar_trajectory_ckpt_path:=${checkpoint_path}")
+    fi
     ;;
 "vehicle")
     opts=("simulation:=false" "use_sim_time:=false" "run_rviz:=false")

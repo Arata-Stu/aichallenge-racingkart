@@ -19,6 +19,8 @@
   <!-- Control method -->
   <arg name="control_method" default="mpc"
        description="Select control: mpc, pure_pursuit, tiny_lidar_net, lidar_trajectory_net, pilot_net, joycon"/>
+  <arg name="lidar_trajectory_ckpt_path"
+       default="/aichallenge/ml_workspace/lidar_trajectory_net/checkpoints/best_model.pth"/>
 
   <!-- Global parameters -->
   <group scoped="false">
@@ -160,6 +162,7 @@
     <include file="$(find-pkg-share aichallenge_submit_launch)/launch/control/lidar_trajectory_net.launch.xml">
       <arg name="simulation" value="$(var simulation)"/>
       <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      <arg name="ckpt_path" value="$(var lidar_trajectory_ckpt_path)"/>
     </include>
   </group>
 
