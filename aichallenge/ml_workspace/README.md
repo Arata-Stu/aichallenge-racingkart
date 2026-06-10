@@ -15,7 +15,7 @@ ml_workspace/
 │  └─ YYYYMMDD-HHMMSS/...
 ├─ val/                     # 検証用に分けたrosbag置き場（任意）
 │  └─ YYYYMMDD-HHMMSS/...
-└─ tiny_lidar_net/
+├─ tiny_lidar_net/
    ├─ README.md
    ├─ requirements.txt
    ├─ train.py
@@ -32,6 +32,18 @@ ml_workspace/
    ├─ outputs/              # 学習ログ出力先（Hydraの既定）
    ├─ extract_data_from_bag.py
    └─ osm2csv.py
+└─ lidar_trajectory_net/
+   ├─ README.md
+   ├─ requirements.txt
+   ├─ train.py
+   ├─ extract_data_from_bag.py
+   ├─ config/
+   │  └─ train.yaml
+   └─ lib/
+      ├─ __init__.py
+      ├─ data.py
+      ├─ loss.py
+      └─ model.py
 ```
 
 ## 各項目の説明
@@ -41,3 +53,4 @@ ml_workspace/
 - `rawdata/`: 記録した rosbag（mcap）の保存先です（タイムスタンプ名のディレクトリが作られます）。
 - `train/`, `val/`: `rawdata/` から分けた rosbag（mcap）を置くためのディレクトリです（運用に応じて使います）。
 - `tiny_lidar_net/`: TinyLiDARNet 用のデータ変換・学習コード一式です。PyTorchの`.pth`をROS 2側で直接利用します。使い方は `aichallenge/ml_workspace/tiny_lidar_net/README.md` を参照してください。
+- `lidar_trajectory_net/`: virtual LiDAR 2本と差分を入力し、時系列 Transformer + Bezier head で ego frame の将来 path を予測する学習コードです。使い方は `aichallenge/ml_workspace/lidar_trajectory_net/README.md` を参照してください。

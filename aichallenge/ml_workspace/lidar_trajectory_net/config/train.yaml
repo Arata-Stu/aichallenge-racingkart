@@ -1,0 +1,51 @@
+data:
+  train_dir: "/aichallenge/ml_workspace/lidar_trajectory_net/dataset/train"
+  val_dir: "/aichallenge/ml_workspace/lidar_trajectory_net/dataset/val"
+
+  # Input shape: [history_length, 3, input_dim]
+  # channels = [virtual_scan, virtual_scan_with_obstacles, diff]
+  history_length: 8
+  history_stride: 1
+  future_num_points: 20
+  future_stride: 2
+  max_range: 30.0
+
+  # Filters for unstable or very long targets in ego coordinates.
+  target_max_x: 40.0
+  target_max_y: 20.0
+  min_future_forward: 0.0
+
+model:
+  input_channels: 3
+  input_dim: 1080
+  embed_dim: 128
+  conv_channels: [32, 64, 128]
+  conv_kernel_sizes: [9, 7, 5]
+  conv_strides: [4, 4, 2]
+  transformer_layers: 2
+  transformer_heads: 4
+  transformer_ff_dim: 512
+  dropout: 0.1
+  num_control_points: 3
+
+  # Bezier control point bounds in ego frame [m].
+  output_scale_x: 40.0
+  output_scale_y: 12.0
+
+loss:
+  point_weight: 1.0
+  end_point_weight: 0.2
+  smoothness_weight: 0.05
+
+train:
+  device: "auto"  # "auto", "cpu", "cuda"
+  batch_size: 64
+  num_workers: 4
+  epochs: 100
+  lr: 0.0003
+  weight_decay: 0.0001
+  grad_clip_norm: 1.0
+  early_stop_patience: 15
+  pretrained_path: null
+  save_dir: "/aichallenge/ml_workspace/lidar_trajectory_net/checkpoints"
+  log_dir: "/aichallenge/ml_workspace/lidar_trajectory_net/logs"
