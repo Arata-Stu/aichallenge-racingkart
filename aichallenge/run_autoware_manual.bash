@@ -4,9 +4,85 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-mode="${1:-awsim}"
-domain_id="${2:-${ROS_DOMAIN_ID:-1}}"
-out_root="${3:-/output/manual}"
+MODES=(
+    "awsim"
+    "awsim-no-viz"
+    "awsim-joycon"
+    "awsim-joycon-no-viz"
+    "awsim-lidar-trajectory-net"
+    "awsim-lidar-trajectory-net-no-viz"
+    "vehicle"
+    "vehicle-joycon"
+    "rosbag"
+)
+
+MODE_DESCRIPTIONS=(
+    "AWSIM + RViz"
+    "AWSIM without RViz"
+    "AWSIM + Joy-Con data collection + RViz"
+    "AWSIM + Joy-Con data collection without RViz"
+    "AWSIM + LiDAR Trajectory Net + Pure Pursuit + RViz"
+    "AWSIM + LiDAR Trajectory Net + Pure Pursuit without RViz"
+    "Real vehicle"
+    "Real vehicle + Joy-Con"
+    "Rosbag playback + RViz"
+)
+
+select_mode() {
+    local choice
+    local index
+
+    echo "Select Autoware mode:" >&2
+    for index in "${!MODES[@]}"; do
+        printf "  %d) %-39s %s\n" \
+            "$((index + 1))" "${MODES[$index]}" "${MODE_DESCRIPTIONS[$index]}" >&2
+    done
+
+    while true; do
+        read -r -p "Mode [1]: " choice
+        choice="${choice:-1}"
+
+        if [[ "${choice}" =~ ^[0-9]+$ ]] &&
+            (( choice >= 1 && choice <= ${#MODES[@]} )); then
+            printf "%s" "${MODES[$((choice - 1))]}"
+            return 0
+        fi
+
+        for index in "${!MODES[@]}"; do
+            if [ "${choice}" = "${MODES[$index]}" ]; then
+                printf "%s" "${MODES[$index]}"
+                return 0
+            fi
+        done
+
+        echo "Invalid selection: ${choice}" >&2
+    done
+}
+
+if [ "$#" -eq 0 ]; then
+    if [ ! -t 0 ]; then
+        echo "Interactive mode requires a terminal." >&2
+        echo "Usage: $0 <mode> [domain_id] [output_root]" >&2
+        exit 2
+    fi
+
+    mode="$(select_mode)"
+
+    default_domain_id="${ROS_DOMAIN_ID:-1}"
+    read -r -p "ROS_DOMAIN_ID [${default_domain_id}]: " domain_id
+    domain_id="${domain_id:-${default_domain_id}}"
+
+    default_out_root="/output/manual"
+    read -r -p "Output root [${default_out_root}]: " out_root
+    out_root="${out_root:-${default_out_root}}"
+
+    echo
+    echo "Starting mode=${mode}, ROS_DOMAIN_ID=${domain_id}, output=${out_root}/d${domain_id}"
+else
+    mode="${1}"
+    domain_id="${2:-${ROS_DOMAIN_ID:-1}}"
+    out_root="${3:-/output/manual}"
+fi
 
 child_pid=""
 child_pgid=""
