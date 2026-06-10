@@ -6,6 +6,7 @@
 #include <tf2/utils.h>
 
 #include <algorithm>
+#include <iterator>
 
 namespace simple_pure_pursuit
 {
@@ -80,10 +81,11 @@ void SimplePurePursuit::onTimer()
   //// calc lookahead distance
   double lookahead_distance = lookahead_gain_ * target_longitudinal_vel + lookahead_min_distance_;
   //// calc center coordinate of rear wheel
+  const double current_yaw = tf2::getYaw(odometry_->pose.pose.orientation);
   double rear_x = odometry_->pose.pose.position.x -
-                  wheel_base_ / 2.0 * std::cos(odometry_->pose.pose.orientation.z);
+                  wheel_base_ / 2.0 * std::cos(current_yaw);
   double rear_y = odometry_->pose.pose.position.y -
-                  wheel_base_ / 2.0 * std::sin(odometry_->pose.pose.orientation.z);
+                  wheel_base_ / 2.0 * std::sin(current_yaw);
   //// search lookahead point
   auto lookahead_point_itr = std::find_if(
     trajectory_->points.begin() + closet_traj_point_idx, trajectory_->points.end(),
@@ -91,6 +93,9 @@ void SimplePurePursuit::onTimer()
       return std::hypot(point.pose.position.x - rear_x, point.pose.position.y - rear_y) >=
              lookahead_distance;
     });
+  if (lookahead_point_itr == trajectory_->points.end()) {
+    lookahead_point_itr = std::prev(trajectory_->points.end());
+  }
   double lookahead_point_x = lookahead_point_itr->pose.position.x;
   double lookahead_point_y = lookahead_point_itr->pose.position.y;
 
@@ -104,7 +109,7 @@ void SimplePurePursuit::onTimer()
 
   // calc steering angle for lateral control
   double alpha = std::atan2(lookahead_point_y - rear_y, lookahead_point_x - rear_x) -
-                 tf2::getYaw(odometry_->pose.pose.orientation);
+                 current_yaw;
   cmd.lateral.steering_tire_angle =
     steering_tire_angle_gain_ * std::atan2(2.0 * wheel_base_ * std::sin(alpha), lookahead_distance);
 

@@ -124,7 +124,11 @@
       <push-ros-namespace namespace="scenario_planning"/>
 
       <!-- Customizable -->
-      <node pkg="simple_trajectory_generator" exec="simple_trajectory_generator_node" name="simple_trajectory_generator" output="screen">
+      <node unless="$(eval &quot;'$(var control_method)' == 'lidar_trajectory_net'&quot;)"
+            pkg="simple_trajectory_generator"
+            exec="simple_trajectory_generator_node"
+            name="simple_trajectory_generator"
+            output="screen">
             <param name="csv_path" value="$(find-pkg-share simple_trajectory_generator)/data/raceline_awsim_30km_from_garage.csv"/>
             <param name="z" value="6.5"/>
       </node>
@@ -154,6 +158,7 @@
 
   <group if="$(eval &quot;'$(var control_method)' == 'lidar_trajectory_net'&quot;)">
     <include file="$(find-pkg-share aichallenge_submit_launch)/launch/control/lidar_trajectory_net.launch.xml">
+      <arg name="simulation" value="$(var simulation)"/>
       <arg name="use_sim_time" value="$(var use_sim_time)"/>
     </include>
   </group>

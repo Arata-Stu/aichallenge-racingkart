@@ -21,6 +21,12 @@ case "${mode}" in
     opts=("simulation:=true" "use_sim_time:=true" "run_rviz:=false")
     launch_file="joycon_data_collection.launch.xml"
     ;;
+"awsim-lidar-trajectory-net")
+    opts=("simulation:=true" "use_sim_time:=true" "run_rviz:=true" "control_method:=lidar_trajectory_net")
+    ;;
+"awsim-lidar-trajectory-net-no-viz")
+    opts=("simulation:=true" "use_sim_time:=true" "run_rviz:=false" "control_method:=lidar_trajectory_net")
+    ;;
 "vehicle")
     opts=("simulation:=false" "use_sim_time:=false" "run_rviz:=false")
     ;;
@@ -32,7 +38,7 @@ case "${mode}" in
     opts=("simulation:=false" "use_sim_time:=true" "run_rviz:=true")
     ;;
 *)
-    echo "invalid argument (use 'awsim', 'awsim-no-viz', 'awsim-joycon', 'awsim-joycon-no-viz', 'vehicle', 'vehicle-joycon', or 'rosbag')"
+    echo "invalid argument (use 'awsim', 'awsim-no-viz', 'awsim-joycon', 'awsim-joycon-no-viz', 'awsim-lidar-trajectory-net', 'awsim-lidar-trajectory-net-no-viz', 'vehicle', 'vehicle-joycon', or 'rosbag')"
     exit 1
     ;;
 esac

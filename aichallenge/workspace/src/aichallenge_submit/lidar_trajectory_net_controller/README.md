@@ -32,6 +32,34 @@ path:
 
 Odometryの高さを使う場合は`path.z_mode:="odometry"`へ変更できます。
 
+## Pure Pursuit Pipeline
+
+`control_method:=lidar_trajectory_net`では以下のpipelineを起動します。
+
+```text
+virtual LaserScan x2
+  -> lidar_trajectory_net_controller
+  -> PathWithLaneId
+  -> path_to_trajectory
+  -> Trajectory
+  -> simple_pure_pursuit
+  -> /control/command/control_cmd
+```
+
+このmodeでは既存のCSV trajectory generatorは起動しません。Pure Pursuitには
+モデル専用topic`/planning/scenario_planning/lidar_trajectory_net/trajectory`を入力します。
+
+```bash
+cd /aichallenge
+./run_autoware_manual.bash awsim-lidar-trajectory-net 1
+```
+
+RVizなしの場合：
+
+```bash
+./run_autoware_manual.bash awsim-lidar-trajectory-net-no-viz 1
+```
+
 ## Build
 
 ```bash
