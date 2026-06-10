@@ -37,6 +37,7 @@ ml_workspace/
    ├─ requirements.txt
    ├─ train.py
    ├─ extract_data_from_bag.py
+   ├─ visualize_offline.py
    ├─ config/
    │  └─ train.yaml
    └─ lib/

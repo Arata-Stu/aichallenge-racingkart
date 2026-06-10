@@ -131,6 +131,7 @@ dmypy.json
 logs/
 checkpoints/
 outputs/
+visualizations/
 
 # ML dataset
 datasets/

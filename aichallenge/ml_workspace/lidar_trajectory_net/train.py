@@ -13,22 +13,7 @@ from tqdm import tqdm
 
 from lib.data import MultiSeqLidarTrajectoryDataset
 from lib.loss import TrajectoryLoss
-from lib.model import LidarTrajectoryNet
-
-
-def resolve_device(device_name: str) -> torch.device:
-    requested = (device_name or "auto").lower()
-
-    if requested == "auto":
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if requested == "cpu":
-        return torch.device("cpu")
-    if requested.startswith("cuda"):
-        if not torch.cuda.is_available():
-            raise RuntimeError("train.device is set to 'cuda', but CUDA is not available.")
-        return torch.device(requested)
-
-    raise ValueError("train.device must be one of: 'auto', 'cpu', 'cuda'.")
+from lib.runtime import build_model, load_checkpoint, make_checkpoint, resolve_device
 
 
 def clean_numerical_tensor(x: torch.Tensor) -> torch.Tensor:
@@ -81,25 +66,10 @@ def main(cfg: DictConfig) -> None:
         drop_last=False,
     )
 
-    model = LidarTrajectoryNet(
-        input_channels=cfg.model.input_channels,
-        input_dim=cfg.model.input_dim,
-        history_length=cfg.data.history_length,
-        embed_dim=cfg.model.embed_dim,
-        conv_channels=list(cfg.model.conv_channels),
-        conv_kernel_sizes=list(cfg.model.conv_kernel_sizes),
-        conv_strides=list(cfg.model.conv_strides),
-        transformer_layers=cfg.model.transformer_layers,
-        transformer_heads=cfg.model.transformer_heads,
-        transformer_ff_dim=cfg.model.transformer_ff_dim,
-        dropout=cfg.model.dropout,
-        num_control_points=cfg.model.num_control_points,
-        num_future_points=cfg.data.future_num_points,
-        output_scale=(cfg.model.output_scale_x, cfg.model.output_scale_y),
-    ).to(device)
+    model = build_model(cfg).to(device)
 
     if cfg.train.pretrained_path:
-        state_dict = torch.load(cfg.train.pretrained_path, map_location=device)
+        state_dict, _, _ = load_checkpoint(cfg.train.pretrained_path, map_location=device)
         model.load_state_dict(state_dict)
         print(f"[INFO] Loaded pretrained model from {cfg.train.pretrained_path}")
 
@@ -119,6 +89,7 @@ def main(cfg: DictConfig) -> None:
     log_dir = Path(cfg.train.log_dir).expanduser().resolve()
     save_dir.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)
+    OmegaConf.save(cfg, save_dir / "train_config.yaml")
 
     best_val_loss = float("inf")
     patience_counter = 0
@@ -135,11 +106,11 @@ def main(cfg: DictConfig) -> None:
             writer.add_scalar("Loss/train", train_loss, epoch + 1)
             writer.add_scalar("Loss/val", val_loss, epoch + 1)
 
-            torch.save(model.state_dict(), last_path)
+            torch.save(make_checkpoint(model, cfg, epoch + 1, val_loss), last_path)
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 patience_counter = 0
-                torch.save(model.state_dict(), best_path)
+                torch.save(make_checkpoint(model, cfg, epoch + 1, val_loss), best_path)
                 print(f"[SAVE] Best model updated: {best_path} (val_loss={best_val_loss:.5f})")
             else:
                 patience_counter += 1

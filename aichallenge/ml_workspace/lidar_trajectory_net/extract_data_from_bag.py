@@ -130,6 +130,8 @@ def process_bag(
     obstacle_times: List[int] = []
     poses: List[Tuple[float, float, float]] = []
     pose_times: List[int] = []
+    scan_angle_min = None
+    scan_angle_max = None
 
     try:
         with AnyReader([bag_path]) as reader:
@@ -150,6 +152,9 @@ def process_bag(
                         scan = clean_scan_array(np.asarray(msg.ranges, dtype=np.float32), config.max_scan_range)
                         scan = resize_scan(scan, config.target_num_rays)
                         if conn.topic == config.free_scan_topic:
+                            if scan_angle_min is None:
+                                scan_angle_min = float(msg.angle_min)
+                                scan_angle_max = float(msg.angle_max)
                             free_scans.append(scan)
                             free_times.append(timestamp)
                         else:
@@ -220,6 +225,10 @@ def process_bag(
         logger.warning("%s: no synchronized samples after filtering.", bag_name)
         return
 
+    if scan_angle_min is None or scan_angle_max is None:
+        scan_angle_min = -np.deg2rad(135.0)
+        scan_angle_max = np.deg2rad(135.0)
+
     np_scan_inputs = np.asarray(scan_inputs, dtype=np.float32)
     np_poses = np.asarray(synced_poses, dtype=np.float32)
     np_timestamps = np.asarray(synced_times, dtype=np.int64)
@@ -228,6 +237,13 @@ def process_bag(
     np.save(out_dir / "scan_inputs.npy", np_scan_inputs)
     np.save(out_dir / "poses.npy", np_poses)
     np.save(out_dir / "timestamps.npy", np_timestamps)
+    scan_angles = np.linspace(
+        float(scan_angle_min),
+        float(scan_angle_max),
+        expected_num_rays,
+        dtype=np.float32,
+    )
+    np.save(out_dir / "scan_angles.npy", scan_angles)
     if debug:
         np.save(out_dir / "sync_deltas.npy", np_sync_deltas)
 
@@ -237,6 +253,11 @@ def process_bag(
         "scan_shape": list(np_scan_inputs.shape),
         "pose_shape": list(np_poses.shape),
         "channel_names": ["virtual_scan", "virtual_scan_with_obstacles", "diff"],
+        "scan_geometry": {
+            "angle_min": float(scan_angles[0]),
+            "angle_max": float(scan_angles[-1]),
+            "num_rays": int(len(scan_angles)),
+        },
         "config": asdict(config),
         "sync_delta_mean_sec": np_sync_deltas.mean(axis=0).tolist(),
         "sync_delta_max_sec": np_sync_deltas.max(axis=0).tolist(),

@@ -46,6 +46,8 @@ class LidarTrajectorySequenceDataset(Dataset):
 
         if self.scans.ndim != 3:
             raise ValueError(f"scan_inputs.npy must have shape [N, C, R], got {self.scans.shape}")
+        if self.scans.shape[1] != 3:
+            raise ValueError(f"scan_inputs.npy must contain 3 channels, got {self.scans.shape[1]}")
         if self.poses.ndim != 2 or self.poses.shape[1] != 3:
             raise ValueError(f"poses.npy must have shape [N, 3], got {self.poses.shape}")
         if len(self.scans) != len(self.poses):
