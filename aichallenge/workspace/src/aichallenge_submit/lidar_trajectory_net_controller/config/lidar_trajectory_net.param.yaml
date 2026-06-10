@@ -1,0 +1,37 @@
+/**:
+  ros__parameters:
+    model:
+      ckpt_path: "/aichallenge/ml_workspace/lidar_trajectory_net/checkpoints/best_model.pth"
+      device: "auto"
+      use_checkpoint_config: true
+      input_channels: 3
+      input_dim: 1080
+      history_length: 8
+      history_stride: 1
+      future_num_points: 25
+      embed_dim: 128
+      conv_channels: [32, 64, 128]
+      conv_kernel_sizes: [9, 7, 5]
+      conv_strides: [4, 4, 2]
+      transformer_layers: 2
+      transformer_heads: 4
+      transformer_ff_dim: 512
+      dropout: 0.1
+      num_control_points: 3
+      output_scale_x: 40.0
+      output_scale_y: 12.0
+
+    max_range: 30.0
+    scan_sync_tolerance_sec: 0.01
+    max_history_gap_sec: 0.2
+    max_odometry_age_sec: 0.2
+
+    path:
+      frame_id: "map"
+      target_velocity_mps: 3.0
+      include_current_pose: true
+      publish_debug_path: true
+      lane_id: -1
+
+    log_interval_sec: 5.0
+    debug: false

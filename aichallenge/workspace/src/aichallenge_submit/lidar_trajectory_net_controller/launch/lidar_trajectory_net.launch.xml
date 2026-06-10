@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <arg name="param_file"
+       default="$(find-pkg-share lidar_trajectory_net_controller)/config/lidar_trajectory_net.param.yaml"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="ckpt_path"
+       default="/aichallenge/ml_workspace/lidar_trajectory_net/checkpoints/best_model.pth"/>
+  <arg name="device" default="auto"/>
+  <arg name="scan_topic" default="/sensing/virtual_lidar/scan"/>
+  <arg name="scan_with_obstacles_topic"
+       default="/sensing/virtual_lidar/scan_with_obstacles"/>
+  <arg name="odometry_topic" default="/localization/kinematic_state"/>
+  <arg name="path_topic" default="/planning/lidar_trajectory_net/path"/>
+  <arg name="debug_path_topic" default="/planning/lidar_trajectory_net/debug_path"/>
+
+  <node pkg="lidar_trajectory_net_controller"
+        exec="lidar_trajectory_net_controller_node.py"
+        name="lidar_trajectory_net_controller"
+        output="screen">
+    <param from="$(var param_file)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <param name="model.ckpt_path" value="$(var ckpt_path)"/>
+    <param name="model.device" value="$(var device)"/>
+
+    <remap from="input/scan" to="$(var scan_topic)"/>
+    <remap from="input/scan_with_obstacles" to="$(var scan_with_obstacles_topic)"/>
+    <remap from="input/odometry" to="$(var odometry_topic)"/>
+    <remap from="output/path" to="$(var path_topic)"/>
+    <remap from="output/debug_path" to="$(var debug_path_topic)"/>
+  </node>
+</launch>
