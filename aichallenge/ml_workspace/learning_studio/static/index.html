@@ -496,7 +496,12 @@
           <p class="eyebrow">Job console</p>
           <h2 id="consoleTitle">Console</h2>
         </div>
-        <button class="icon-button" id="closeConsoleButton">×</button>
+        <div class="dialog-actions">
+          <button class="button secondary compact-button" id="copyConsoleButton">
+            Copy log
+          </button>
+          <button class="icon-button" id="closeConsoleButton" aria-label="Close console">×</button>
+        </div>
       </div>
       <pre id="consoleOutput">No job output.</pre>
     </dialog>

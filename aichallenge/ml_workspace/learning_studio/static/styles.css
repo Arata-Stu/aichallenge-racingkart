@@ -1166,6 +1166,18 @@ dialog::backdrop {
   font-size: 18px;
 }
 
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.compact-button {
+  min-height: 39px;
+  padding: 0 15px;
+  font-size: 11px;
+}
+
 dialog pre {
   height: calc(100% - 85px);
   margin: 0;

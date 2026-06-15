@@ -20,7 +20,7 @@ class PilotNet(nn.Module):
         with torch.no_grad():
             dummy = torch.zeros(1, 3, image_height, image_width)
             out = self.conv5(self.conv4(self.conv3(self.conv2(self.conv1(dummy)))))
-            self.flatten_dim = out.view(1, -1).shape[1]
+            self.flatten_dim = torch.flatten(out, start_dim=1).shape[1]
 
         self.fc1 = nn.Linear(self.flatten_dim, 100)
         self.fc2 = nn.Linear(100, 50)
@@ -43,7 +43,7 @@ class PilotNet(nn.Module):
         x = F.relu(self.conv3(x))
         x = F.relu(self.conv4(x))
         x = F.relu(self.conv5(x))
-        x = x.view(x.size(0), -1)
+        x = torch.flatten(x, start_dim=1)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = F.relu(self.fc3(x))

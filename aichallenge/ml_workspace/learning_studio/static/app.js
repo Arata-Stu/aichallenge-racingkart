@@ -66,6 +66,23 @@ function toast(message, type = "success") {
   setTimeout(() => item.remove(), 4200);
 }
 
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("Clipboard is not available");
+}
+
 function setView(name) {
   $$(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === name));
   $$(".view").forEach((view) => view.classList.toggle("active", view.id === `view-${name}`));
@@ -608,6 +625,20 @@ function bindEvents() {
 
   $("#consoleButton").addEventListener("click", () => $("#consoleDialog").showModal());
   $("#closeConsoleButton").addEventListener("click", () => $("#consoleDialog").close());
+  $("#copyConsoleButton").addEventListener("click", async () => {
+    const output = $("#consoleOutput").textContent || "";
+    try {
+      await copyText(output);
+      const button = $("#copyConsoleButton");
+      button.textContent = "Copied";
+      toast("Console log をコピーしました。");
+      setTimeout(() => {
+        button.textContent = "Copy log";
+      }, 1600);
+    } catch (error) {
+      toast(`コピーできませんでした: ${error.message}`, "error");
+    }
+  });
   $("#stopJobButton").addEventListener("click", async () => {
     try {
       const payload = await api("/api/job/cancel", { method: "POST", body: "{}" });
