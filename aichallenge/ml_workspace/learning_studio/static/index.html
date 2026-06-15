@@ -31,10 +31,9 @@
         <div class="hero">
           <div>
             <p class="eyebrow">Dataset Builder</p>
-            <h1>走行 sequence を選び、<br>学習データへ変換する。</h1>
+            <h1>Data</h1>
             <p class="hero-copy">
-              ROS bag の metadata を読み込み、train / validation の役割を
-              sequence 単位で割り当てます。
+              Discover ROS bags and assign sequences to train or validation datasets.
             </p>
           </div>
           <div class="path-chip" id="recordRoot">/aichallenge/record</div>
@@ -156,9 +155,9 @@
         <div class="hero">
           <div>
             <p class="eyebrow">Model Training</p>
-            <h1>設定を見渡しながら、<br><span id="trainModelTitle">PilotNet</span> を学習する。</h1>
+            <h1>Train</h1>
             <p class="hero-copy">
-              GUI の値は既存 `train.py` の Hydra override として渡されます。
+              Configure and train <span id="trainModelTitle">PilotNet</span>.
             </p>
           </div>
           <div class="path-chip" id="trainModelChip">PilotNet / Camera</div>
@@ -319,7 +318,10 @@
         <div class="hero evaluate-hero">
           <div>
             <p class="eyebrow">Failure Analysis</p>
-            <h1>予測を再生し、次に集めるべき<br>scene を見つける。</h1>
+            <h1>Evaluate</h1>
+            <p class="hero-copy">
+              Review predictions frame by frame and identify high-error scenes.
+            </p>
           </div>
         </div>
 
@@ -359,9 +361,13 @@
             <input name="input_dim" type="hidden" value="750">
             <input name="max_range" type="hidden" value="30">
             <input name="batch_size" type="hidden" value="128">
-            <button class="button primary" type="submit">Run evaluation</button>
+            <button class="button primary evaluation-run-button" type="submit">Run evaluation</button>
           </form>
           <div class="load-existing">
+            <div class="load-existing-copy">
+              <strong>Previous evaluations</strong>
+              <span>保存済みの結果を読み込み、レビューを再開します。</span>
+            </div>
             <label class="field">
               <span>Existing result</span>
               <select id="existingEvaluation"></select>

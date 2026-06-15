@@ -162,7 +162,7 @@ main {
 }
 
 .hero {
-  min-height: 205px;
+  min-height: 145px;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -171,8 +171,8 @@ main {
 
 .hero h1 {
   max-width: 980px;
-  margin: 11px 0 15px;
-  font-size: clamp(38px, 4vw, 64px);
+  margin: 8px 0 10px;
+  font-size: clamp(34px, 3.2vw, 52px);
   line-height: 1.08;
   letter-spacing: -0.045em;
 }
@@ -653,40 +653,73 @@ td {
 }
 
 .evaluate-hero {
-  min-height: 225px;
+  min-height: 145px;
 }
 
 .evaluation-toolbar {
-  padding: 20px 22px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 24px;
+  padding: 0;
+  display: block;
+  overflow: visible;
 }
 
 .evaluation-form,
 .load-existing {
-  display: flex;
+  display: grid;
   align-items: end;
-  gap: 12px;
+}
+
+.evaluation-form {
+  grid-template-columns:
+    minmax(140px, 0.75fr)
+    minmax(220px, 1.25fr)
+    minmax(130px, 0.7fr)
+    minmax(240px, 1.35fr)
+    minmax(220px, 1.2fr)
+    minmax(150px, 0.72fr);
+  gap: 16px;
+  padding: 22px 24px 24px;
 }
 
 .evaluation-form .field {
-  min-width: 170px;
-  flex: 1 1 190px;
-}
-
-.evaluation-form .field.small {
-  min-width: 115px;
-  flex: 0 0 125px;
+  min-width: 0;
 }
 
 .load-existing {
-  padding-left: 24px;
-  border-left: 1px solid var(--line);
+  grid-template-columns: minmax(260px, 1fr) minmax(340px, 520px) 110px;
+  gap: 16px;
+  padding: 17px 24px 19px;
+  align-items: end;
+  border-top: 1px solid var(--line);
+  background: rgba(8, 12, 17, 0.34);
 }
 
 .load-existing .field {
-  min-width: 190px;
+  min-width: 0;
+}
+
+.load-existing-copy {
+  align-self: center;
+}
+
+.load-existing-copy strong,
+.load-existing-copy span {
+  display: block;
+}
+
+.load-existing-copy strong {
+  font-size: 12px;
+}
+
+.load-existing-copy span {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.evaluation-run-button {
+  min-height: 45px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .viewer-panel {
@@ -1186,17 +1219,25 @@ dialog pre {
     grid-template-columns: minmax(0, 1fr) 350px;
   }
 
-  .evaluation-toolbar {
-    grid-template-columns: 1fr;
+  .evaluation-form {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .load-existing {
-    padding: 18px 0 0;
-    border-top: 1px solid var(--line);
-    border-left: 0;
+    grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.3fr) 100px;
   }
 
   .worst-list {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1500px) {
+  .evaluation-form {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .evaluation-run-button {
+    min-height: 45px;
   }
 }
