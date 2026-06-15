@@ -877,6 +877,11 @@ td {
   accent-color: var(--mint);
 }
 
+.overlay-toggle.disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .output-panel {
   min-height: 260px;
 }

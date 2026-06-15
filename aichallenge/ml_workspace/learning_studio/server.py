@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -493,6 +494,7 @@ class JobManager:
 
 JOBS = JobManager()
 SEQUENCE_CACHE: dict[str, dict[str, Any]] = {}
+GRAD_CAM_LOCK = threading.Lock()
 
 
 def refresh_sequence_cache() -> list[dict[str, Any]]:
@@ -988,13 +990,143 @@ def frame_info(reference: str, index: int) -> dict[str, Any]:
     }
 
 
-def render_frame(reference: str, index: int, overlay: bool) -> bytes:
+@lru_cache(maxsize=4)
+def load_pilot_grad_cam_model(
+    checkpoint_value: str,
+    image_height: int,
+    image_width: int,
+    output_dim: int,
+) -> Any:
+    import torch
+
+    model_path = PILOT_ROOT / "lib" / "model.py"
+    module_spec = importlib.util.spec_from_file_location(
+        "learning_studio_grad_cam_pilot_model",
+        model_path,
+    )
+    if module_spec is None or module_spec.loader is None:
+        raise RuntimeError(f"Cannot import PilotNet model: {model_path}")
+    module = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(module)
+    model = module.PilotNet(
+        image_height=image_height,
+        image_width=image_width,
+        output_dim=output_dim,
+    )
+    state_dict = torch.load(
+        checkpoint_value,
+        map_location=torch.device("cpu"),
+        weights_only=True,
+    )
+    model.load_state_dict(state_dict)
+    return model.eval()
+
+
+def render_pilot_grad_cam(
+    rgb: Any,
+    manifest: dict[str, Any],
+) -> Any:
+    import cv2
+    import numpy as np
+    import torch
+
+    model_config = manifest["model"]
+    image_height = int(model_config["image_height"])
+    image_width = int(model_config["image_width"])
+    output_dim = int(model_config["output_dim"])
+    color_space = str(model_config.get("color_space", "yuv")).lower()
+    checkpoint = require_child(
+        manifest.get("checkpoint"),
+        PILOT_ROOT,
+        "checkpoint",
+    )
+    if not checkpoint.is_file():
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint}")
+
+    model_input = np.asarray(rgb)
+    if model_input.shape[:2] != (image_height, image_width):
+        model_input = cv2.resize(
+            model_input,
+            (image_width, image_height),
+            interpolation=cv2.INTER_LINEAR,
+        )
+    if color_space == "yuv":
+        model_input = cv2.cvtColor(model_input, cv2.COLOR_RGB2YUV)
+    elif color_space != "rgb":
+        raise ValueError(f"Unsupported color space: {color_space}")
+    batch = np.ascontiguousarray(
+        (model_input.astype(np.float32) / 255.0).transpose(2, 0, 1)[None]
+    )
+    tensor = torch.from_numpy(batch).requires_grad_(True)
+
+    with GRAD_CAM_LOCK, torch.enable_grad():
+        model = load_pilot_grad_cam_model(
+            str(checkpoint),
+            image_height,
+            image_width,
+            output_dim,
+        )
+        captured: dict[str, Any] = {}
+
+        def capture_activation(
+            _module: Any,
+            _inputs: Any,
+            output: Any,
+        ) -> None:
+            captured["activation"] = output
+            output.register_hook(
+                lambda gradient: captured.__setitem__("gradient", gradient)
+            )
+
+        hook = model.conv5.register_forward_hook(capture_activation)
+        try:
+            model.zero_grad(set_to_none=True)
+            output = model(tensor)
+            steer_index = 0 if output_dim == 1 else 1
+            output[0, steer_index].backward()
+        finally:
+            hook.remove()
+
+        activation = captured.get("activation")
+        gradient = captured.get("gradient")
+        if activation is None or gradient is None:
+            raise RuntimeError("Grad-CAM feature map could not be captured")
+        weights = gradient.mean(dim=(2, 3), keepdim=True)
+        cam = torch.relu((weights * activation).sum(dim=1))[0]
+        cam = cam.detach().cpu().numpy()
+
+    cam -= float(cam.min())
+    maximum = float(cam.max())
+    if maximum > 1e-8:
+        cam /= maximum
+    cam = cv2.resize(
+        cam,
+        (rgb.shape[1], rgb.shape[0]),
+        interpolation=cv2.INTER_CUBIC,
+    )
+    heatmap = cv2.applyColorMap(
+        np.uint8(np.clip(cam, 0.0, 1.0) * 255),
+        cv2.COLORMAP_JET,
+    )
+    original = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    return cv2.addWeighted(original, 0.55, heatmap, 0.45, 0.0)
+
+
+def render_frame(
+    reference: str,
+    index: int,
+    overlay: bool,
+    grad_cam: bool,
+) -> bytes:
     import cv2
     import numpy as np
 
     manifest, results = load_evaluation(reference)
     sequence, local_index = locate_frame(manifest, index)
-    if manifest.get("model_type", "pilot_net") == "tiny_lidar_net":
+    model_type = manifest.get("model_type", "pilot_net")
+    if grad_cam and model_type != "pilot_net":
+        raise ValueError("Grad-CAM is currently available for PilotNet only")
+    if model_type == "tiny_lidar_net":
         scans = np.load(Path(sequence["path"]) / "scans.npy", mmap_mode="r")
         scan = np.asarray(scans[local_index], dtype=np.float32)
         max_range = float(manifest["model"].get("max_range", 30.0))
@@ -1046,7 +1178,11 @@ def render_frame(reference: str, index: int, overlay: bool) -> bytes:
     else:
         images = np.load(Path(sequence["path"]) / "images.npy", mmap_mode="r")
         rgb = np.asarray(images[local_index]).copy()
-        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        bgr = (
+            render_pilot_grad_cam(rgb, manifest)
+            if grad_cam
+            else cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        )
         scale = max(2, min(6, 1000 // max(1, bgr.shape[1])))
         bgr = cv2.resize(
             bgr,
@@ -1075,6 +1211,17 @@ def render_frame(reference: str, index: int, overlay: bool) -> bytes:
             2,
             cv2.LINE_AA,
         )
+        if grad_cam:
+            cv2.putText(
+                bgr,
+                "Grad-CAM  conv5 / steering",
+                (max(18, width - 315), 40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.58,
+                (112, 213, 159),
+                2,
+                cv2.LINE_AA,
+            )
         target_steer = float(info["target"]["steer"])
         predicted_steer = float(info["prediction"]["steer"])
         origin = (width // 2, bgr.shape[0] - 14)
@@ -1188,7 +1335,8 @@ class StudioHandler(BaseHTTPRequestHandler):
                 if len(parts) == 4 and parts[3] == "frame.jpg":
                     index = int(query.get("index", ["0"])[0])
                     overlay = query.get("overlay", ["1"])[0] != "0"
-                    body = render_frame(parts[2], index, overlay)
+                    grad_cam = query.get("gradcam", ["0"])[0] != "0"
+                    body = render_frame(parts[2], index, overlay, grad_cam)
                     self.send_response(HTTPStatus.OK)
                     self.send_header("Content-Type", "image/jpeg")
                     self.send_header("Content-Length", str(len(body)))

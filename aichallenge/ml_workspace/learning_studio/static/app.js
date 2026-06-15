@@ -310,6 +310,18 @@ function syncModelUi(context) {
     $("#trainModelTitle").textContent = tiny ? "TinyLiDARNet" : "PilotNet";
     $("#trainModelChip").textContent = tiny ? "TinyLiDARNet / 2D LiDAR" : "PilotNet / Camera";
   }
+  if (context === "eval") syncGradCamUi(modelType);
+}
+
+function syncGradCamUi(modelType) {
+  const supported = modelType === "pilot_net";
+  const toggle = $("#gradCamToggle");
+  toggle.disabled = !supported;
+  if (!supported) toggle.checked = false;
+  $("#gradCamControl").classList.toggle("disabled", !supported);
+  $("#gradCamControl").title = supported
+    ? "PilotNet steering output / conv5"
+    : "Grad-CAM is currently available for PilotNet only";
 }
 
 function renderJob(job) {
@@ -383,6 +395,7 @@ async function loadEvaluation(name) {
     const detail = await api(`/api/evaluations/${encodeURIComponent(name)}`);
     state.evaluation = detail;
     state.frameIndex = 0;
+    syncGradCamUi(detail.model_type);
     $("#frameSlider").max = Math.max(0, detail.summary.frame_count - 1);
     $("#frameSlider").value = "0";
     renderEvaluationSummary();
@@ -423,7 +436,8 @@ async function showFrame(index) {
   state.frameIndex = clamped;
   $("#frameSlider").value = String(clamped);
   const overlay = $("#overlayToggle").checked ? 1 : 0;
-  $("#evaluationFrame").src = `/api/evaluations/${encodeURIComponent(evaluation.id)}/frame.jpg?index=${clamped}&overlay=${overlay}&t=${Date.now()}`;
+  const gradCam = $("#gradCamToggle").checked ? 1 : 0;
+  $("#evaluationFrame").src = `/api/evaluations/${encodeURIComponent(evaluation.id)}/frame.jpg?index=${clamped}&overlay=${overlay}&gradcam=${gradCam}&t=${Date.now()}`;
   $("#evaluationFrame").hidden = false;
   $("#viewerPlaceholder").hidden = true;
   try {
@@ -514,7 +528,8 @@ function togglePlayback() {
   state.playing = true;
   $("#playButton").textContent = "Ⅱ";
   $("#playButton").title = "停止";
-  const fps = Number($("#playbackSpeed").value);
+  const requestedFps = Number($("#playbackSpeed").value);
+  const fps = $("#gradCamToggle").checked ? Math.min(2, requestedFps) : requestedFps;
   state.playTimer = setInterval(() => {
     const next = state.frameIndex + 1;
     if (next >= state.evaluation.summary.frame_count) {
@@ -616,6 +631,13 @@ function bindEvents() {
   $("#playButton").addEventListener("click", togglePlayback);
   $("#frameSlider").addEventListener("input", (event) => showFrame(Number(event.target.value)));
   $("#overlayToggle").addEventListener("change", () => showFrame(state.frameIndex));
+  $("#gradCamToggle").addEventListener("change", () => {
+    if (state.playing) {
+      stopPlayback();
+      togglePlayback();
+    }
+    showFrame(state.frameIndex);
+  });
   $("#playbackSpeed").addEventListener("change", () => {
     if (state.playing) {
       stopPlayback();
