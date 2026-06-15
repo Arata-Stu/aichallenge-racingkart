@@ -90,6 +90,9 @@ function renderAll() {
   renderDatasetOptions();
   renderCheckpoints();
   renderEvaluationOptions();
+  syncModelUi("extract");
+  syncModelUi("train");
+  syncModelUi("eval");
   renderJob(state.job);
 }
 
@@ -167,34 +170,47 @@ function optionMarkup(items, label, value, emptyText) {
   return items.map((item) => `<option value="${escapeHtml(value(item))}">${escapeHtml(label(item))}</option>`).join("");
 }
 
-function renderDatasetOptions() {
-  const markup = optionMarkup(
-    state.datasets,
+function modelItems(items, modelType) {
+  return items.filter((item) => item.model_type === modelType);
+}
+
+function renderDatasetSelect(select, modelType) {
+  const current = select.value;
+  const datasets = modelItems(state.datasets, modelType);
+  select.innerHTML = optionMarkup(
+    datasets,
     (dataset) => `${dataset.name} · train ${formatNumber(dataset.train_samples)} / val ${formatNumber(dataset.val_samples)}`,
     (dataset) => dataset.name,
     "Dataset がありません",
   );
-  ["#trainDataset", "#evalDataset"].forEach((selector) => {
-    const select = $(selector);
-    const current = select.value;
-    select.innerHTML = markup;
-    if ([...select.options].some((option) => option.value === current)) select.value = current;
-  });
+  if ([...select.options].some((option) => option.value === current)) {
+    select.value = current;
+  }
+}
+
+function renderDatasetOptions() {
+  renderDatasetSelect($("#trainDataset"), $("#trainModel").value);
+  renderDatasetSelect($("#evalDataset"), $("#evalModel").value);
+  syncDatasetShape("train");
 }
 
 function renderCheckpoints() {
-  $("#checkpointCount").textContent = formatNumber(state.checkpoints.length);
-  $("#checkpointList").innerHTML = state.checkpoints.length
-    ? state.checkpoints.map((checkpoint) => `
+  const trainModel = $("#trainModel").value;
+  const evalModel = $("#evalModel").value;
+  const trainCheckpoints = modelItems(state.checkpoints, trainModel);
+  const evalCheckpoints = modelItems(state.checkpoints, evalModel);
+  $("#checkpointCount").textContent = formatNumber(trainCheckpoints.length);
+  $("#checkpointList").innerHTML = trainCheckpoints.length
+    ? trainCheckpoints.map((checkpoint) => `
         <div class="artifact">
-          <strong>${escapeHtml(checkpoint.name)}</strong>
+          <strong>${escapeHtml(checkpoint.name)} <small>${escapeHtml(checkpoint.model_label)}</small></strong>
           <span title="${escapeHtml(checkpoint.path)}">${escapeHtml(checkpoint.path)}</span>
         </div>
       `).join("")
     : '<div class="empty-inline">Checkpoint はまだありません。</div>';
 
   const evalMarkup = optionMarkup(
-    state.checkpoints,
+    evalCheckpoints,
     (checkpoint) => checkpoint.name,
     (checkpoint) => checkpoint.path,
     "Checkpoint がありません",
@@ -207,7 +223,13 @@ function renderCheckpoints() {
   syncEvaluationModelConfig();
 
   const previousPretrained = $("#pretrainedCheckpoint").value;
-  $("#pretrainedCheckpoint").innerHTML = `<option value="">None</option>${evalMarkup}`;
+  const pretrainedMarkup = optionMarkup(
+    trainCheckpoints,
+    (checkpoint) => checkpoint.name,
+    (checkpoint) => checkpoint.path,
+    "Checkpoint がありません",
+  );
+  $("#pretrainedCheckpoint").innerHTML = `<option value="">None</option>${pretrainedMarkup}`;
   if ([...$("#pretrainedCheckpoint").options].some((option) => option.value === previousPretrained)) {
     $("#pretrainedCheckpoint").value = previousPretrained;
   }
@@ -221,18 +243,56 @@ function syncEvaluationModelConfig() {
   form.elements.image_height.value = checkpoint.model.image_height ?? 66;
   form.elements.output_dim.value = checkpoint.model.output_dim ?? 2;
   form.elements.color_space.value = checkpoint.model.color_space ?? "yuv";
+  form.elements.architecture.value = checkpoint.model.architecture ?? "TinyLidarNet";
+  form.elements.input_dim.value = checkpoint.model.input_dim ?? 750;
+  form.elements.max_range.value = checkpoint.model.max_range ?? 30;
 }
 
 function renderEvaluationOptions() {
   const select = $("#existingEvaluation");
   const current = select.value;
+  const evaluations = modelItems(state.evaluations, $("#evalModel").value);
   select.innerHTML = optionMarkup(
-    state.evaluations,
+    evaluations,
     (evaluation) => `${evaluation.name} · ${evaluation.split} · ${Number(evaluation.mean_mae || 0).toFixed(4)}`,
-    (evaluation) => evaluation.name,
+    (evaluation) => evaluation.id,
     "Evaluation がありません",
   );
   if ([...select.options].some((option) => option.value === current)) select.value = current;
+}
+
+function syncDatasetShape(context) {
+  const modelSelect = $(`#${context}Model`);
+  const datasetSelect = $(`#${context}Dataset`);
+  if (!modelSelect || !datasetSelect || modelSelect.value !== "tiny_lidar_net") return;
+  const dataset = state.datasets.find(
+    (item) => item.model_type === "tiny_lidar_net" && item.name === datasetSelect.value,
+  );
+  const inputDim = dataset?.input_shape?.[0];
+  if (inputDim && context === "train") {
+    $("#trainForm").elements.input_dim.value = inputDim;
+  }
+}
+
+function syncModelUi(context) {
+  const modelType = $(`#${context}Model`).value;
+  const form = context === "extract"
+    ? $("#extractForm")
+    : context === "train"
+      ? $("#trainForm")
+      : $("#evaluationForm");
+  $$("[data-model-only]", form).forEach((group) => {
+    const active = group.dataset.modelOnly === modelType;
+    group.hidden = !active;
+    $$("input, select", group).forEach((control) => {
+      control.disabled = !active;
+    });
+  });
+  if (context === "train") {
+    const tiny = modelType === "tiny_lidar_net";
+    $("#trainModelTitle").textContent = tiny ? "TinyLiDARNet" : "PilotNet";
+    $("#trainModelChip").textContent = tiny ? "TinyLiDARNet / 2D LiDAR" : "PilotNet / Camera";
+  }
 }
 
 function renderJob(job) {
@@ -346,12 +406,12 @@ async function showFrame(index) {
   state.frameIndex = clamped;
   $("#frameSlider").value = String(clamped);
   const overlay = $("#overlayToggle").checked ? 1 : 0;
-  $("#evaluationFrame").src = `/api/evaluations/${encodeURIComponent(evaluation.name)}/frame.jpg?index=${clamped}&overlay=${overlay}&t=${Date.now()}`;
+  $("#evaluationFrame").src = `/api/evaluations/${encodeURIComponent(evaluation.id)}/frame.jpg?index=${clamped}&overlay=${overlay}&t=${Date.now()}`;
   $("#evaluationFrame").hidden = false;
   $("#viewerPlaceholder").hidden = true;
   try {
     const info = await api(
-      `/api/evaluations/${encodeURIComponent(evaluation.name)}/frame-info?index=${clamped}`,
+      `/api/evaluations/${encodeURIComponent(evaluation.id)}/frame-info?index=${clamped}`,
     );
     if (state.frameIndex !== clamped) return;
     $("#frameSequence").textContent = info.sequence;
@@ -452,15 +512,38 @@ function bindEvents() {
   $$(".tab").forEach((tab) => tab.addEventListener("click", () => setView(tab.dataset.view)));
   $("#refreshButton").addEventListener("click", () => refreshState());
   $("#sequenceFilter").addEventListener("input", renderSequences);
+  $("#extractModel").addEventListener("change", () => {
+    syncModelUi("extract");
+    const prefix = $("#extractModel").value === "tiny_lidar_net"
+      ? "tiny_lidar_dataset"
+      : "pilotnet_dataset";
+    $("#datasetName").value = timestampName(prefix);
+  });
+  $("#trainModel").addEventListener("change", () => {
+    syncModelUi("train");
+    renderDatasetSelect($("#trainDataset"), $("#trainModel").value);
+    syncDatasetShape("train");
+    renderCheckpoints();
+    const prefix = $("#trainModel").value === "tiny_lidar_net"
+      ? "tinylidar"
+      : "pilotnet";
+    $("#runName").value = timestampName(prefix);
+  });
+  $("#evalModel").addEventListener("change", () => {
+    syncModelUi("eval");
+    renderDatasetSelect($("#evalDataset"), $("#evalModel").value);
+    renderCheckpoints();
+    renderEvaluationOptions();
+  });
+  $("#trainDataset").addEventListener("change", () => syncDatasetShape("train"));
 
   $("#extractForm").addEventListener("submit", (event) => {
     event.preventDefault();
-    const payload = numericPayload(formObject(event.currentTarget), [
-      "image_width",
-      "image_height",
-      "crop_top_ratio",
-      "workers",
-    ]);
+    const payload = formObject(event.currentTarget);
+    const numericFields = payload.model_type === "pilot_net"
+      ? ["image_width", "image_height", "crop_top_ratio", "workers"]
+      : ["max_range", "workers"];
+    numericPayload(payload, numericFields);
     payload.assignments = state.sequences.map((sequence) => ({
       id: sequence.id,
       split: state.assignments.get(sequence.id) || "unused",
@@ -470,32 +553,42 @@ function bindEvents() {
 
   $("#trainForm").addEventListener("submit", (event) => {
     event.preventDefault();
-    const payload = numericPayload(formObject(event.currentTarget), [
+    const payload = formObject(event.currentTarget);
+    const numericFields = [
       "epochs",
       "batch_size",
       "num_workers",
       "early_stop_patience",
-      "image_height",
-      "image_width",
-      "output_dim",
       "lr",
-      "weight_decay",
       "steer_weight",
       "accel_weight",
-      "shift_range",
-      "steer_correction_per_pixel",
-    ]);
+    ];
+    if (payload.model_type === "pilot_net") {
+      numericFields.push(
+        "image_height",
+        "image_width",
+        "output_dim",
+        "weight_decay",
+        "shift_range",
+        "steer_correction_per_pixel",
+      );
+    } else {
+      numericFields.push("input_dim", "max_range");
+    }
+    numericPayload(payload, numericFields);
     postForm("/api/train", payload);
   });
 
   $("#evaluationForm").addEventListener("submit", (event) => {
     event.preventDefault();
-    const payload = numericPayload(formObject(event.currentTarget), [
-      "image_width",
-      "image_height",
-      "output_dim",
-      "batch_size",
-    ]);
+    const payload = formObject(event.currentTarget);
+    const numericFields = ["output_dim", "batch_size"];
+    if (payload.model_type === "pilot_net") {
+      numericFields.push("image_width", "image_height");
+    } else {
+      numericFields.push("input_dim", "max_range");
+    }
+    numericPayload(payload, numericFields);
     postForm("/api/evaluate", payload);
   });
 
@@ -527,9 +620,12 @@ function bindEvents() {
 }
 
 function initializeDefaults() {
-  $("#datasetName").value = timestampName("e2e_dataset");
+  $("#datasetName").value = timestampName("pilotnet_dataset");
   $("#runName").value = timestampName("pilotnet");
   $("#evaluationName").value = timestampName("validation_review");
+  syncModelUi("extract");
+  syncModelUi("train");
+  syncModelUi("eval");
 }
 
 initializeDefaults();

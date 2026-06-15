@@ -256,6 +256,7 @@ def main():
     # Topic configuration
     parser.add_argument('--control-topic', type=str, default='/control/command/control_cmd', help='Topic name for control commands.')
     parser.add_argument('--scan-topic', type=str, default='/sensing/lidar/scan', help='Topic name for LiDAR scans.')
+    parser.add_argument('--max-scan-range', type=float, default=30.0, help='Maximum LiDAR range retained in meters.')
     
     # Performance arguments
     default_workers = min(os.cpu_count() or 1, 8)
@@ -291,7 +292,11 @@ def main():
     logger.info(f"Found {len(bag_dirs)} bags. Starting processing with {num_workers} workers.")
 
     # --- Processing Phase ---
-    config = ExtractionConfig(control_topic=args.control_topic, scan_topic=args.scan_topic)
+    config = ExtractionConfig(
+        control_topic=args.control_topic,
+        scan_topic=args.scan_topic,
+        max_scan_range=args.max_scan_range,
+    )
     tasks = [(p, args.outdir, config, args.debug) for p in bag_dirs]
 
     start_time = time.time()

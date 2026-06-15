@@ -15,7 +15,10 @@
 - [`autoware_auto_control_msgs/msg/AckermannControlCommand`](https://github.com/tier4/autoware_auto_msgs/blob/tier4/main/autoware_auto_control_msgs/msg/AckermannControlCommand.idl) : 学習のtarget(教師)となる、アクセルとステアリングの情報を含むtopic
 
 ```bash
-python3 extract_data_from_bag.py --bags-dir /path/to/record/ --outdir ./datasets/
+python3 extract_data_from_bag.py \
+  --bags-dir /path/to/record/ \
+  --outdir ./datasets/ \
+  --max-scan-range 30.0
 ```
 
 ## 学習

@@ -101,28 +101,43 @@
             </div>
             <form id="extractForm" class="form-grid">
               <label class="field full">
+                <span>Model</span>
+                <select name="model_type" id="extractModel">
+                  <option value="pilot_net">PilotNet · Camera</option>
+                  <option value="tiny_lidar_net">TinyLiDARNet · 2D LiDAR</option>
+                </select>
+              </label>
+              <label class="field full">
                 <span>Dataset name</span>
                 <input name="dataset_name" id="datasetName" required>
               </label>
-              <label class="field full">
+              <label class="field full" data-model-only="pilot_net">
                 <span>Image topic</span>
                 <input name="image_topic" value="/sensing/camera/image_raw" required>
+              </label>
+              <label class="field full" data-model-only="tiny_lidar_net" hidden>
+                <span>LiDAR scan topic</span>
+                <input name="scan_topic" value="/sensing/lidar/scan" required>
               </label>
               <label class="field full">
                 <span>Control topic</span>
                 <input name="control_topic" value="/control/command/control_cmd" required>
               </label>
-              <label class="field">
+              <label class="field" data-model-only="pilot_net">
                 <span>Image width</span>
                 <input name="image_width" type="number" value="200" min="16" required>
               </label>
-              <label class="field">
+              <label class="field" data-model-only="pilot_net">
                 <span>Image height</span>
                 <input name="image_height" type="number" value="66" min="16" required>
               </label>
-              <label class="field">
+              <label class="field" data-model-only="pilot_net">
                 <span>Crop top ratio</span>
                 <input name="crop_top_ratio" type="number" value="0.375" min="0" max="0.95" step="0.025" required>
+              </label>
+              <label class="field" data-model-only="tiny_lidar_net" hidden>
+                <span>Max scan range (m)</span>
+                <input name="max_range" type="number" value="30" min="0.1" step="0.5" required>
               </label>
               <label class="field">
                 <span>Workers</span>
@@ -141,12 +156,12 @@
         <div class="hero">
           <div>
             <p class="eyebrow">Model Training</p>
-            <h1>設定を見渡しながら、<br>PilotNet を学習する。</h1>
+            <h1>設定を見渡しながら、<br><span id="trainModelTitle">PilotNet</span> を学習する。</h1>
             <p class="hero-copy">
               GUI の値は既存 `train.py` の Hydra override として渡されます。
             </p>
           </div>
-          <div class="path-chip">PilotNet / PyTorch</div>
+          <div class="path-chip" id="trainModelChip">PilotNet / Camera</div>
         </div>
 
         <div class="layout train-layout">
@@ -158,6 +173,13 @@
               </div>
             </div>
             <form id="trainForm" class="form-grid training-grid">
+              <label class="field span-2">
+                <span>Model</span>
+                <select name="model_type" id="trainModel">
+                  <option value="pilot_net">PilotNet · Camera</option>
+                  <option value="tiny_lidar_net">TinyLiDARNet · 2D LiDAR</option>
+                </select>
+              </label>
               <label class="field span-2">
                 <span>Dataset</span>
                 <select name="dataset_name" id="trainDataset" required></select>
@@ -185,7 +207,7 @@
                 <span>Learning rate</span>
                 <input name="lr" type="number" value="0.0005" min="0.00000001" step="0.0001" required>
               </label>
-              <label class="field">
+              <label class="field" data-model-only="pilot_net">
                 <span>Weight decay</span>
                 <input name="weight_decay" type="number" value="0.0001" min="0" step="0.0001" required>
               </label>
@@ -198,33 +220,56 @@
                 <input name="early_stop_patience" type="number" value="20" min="1" required>
               </label>
               <div class="form-section span-2">Model & loss</div>
-              <label class="field">
+              <label class="field" data-model-only="pilot_net">
                 <span>Image width</span>
                 <input name="image_width" type="number" value="200" min="16" required>
               </label>
-              <label class="field">
+              <label class="field" data-model-only="pilot_net">
                 <span>Image height</span>
                 <input name="image_height" type="number" value="66" min="16" required>
               </label>
-              <label class="field">
+              <label class="field" data-model-only="pilot_net">
                 <span>Color space</span>
                 <select name="color_space">
                   <option value="yuv">YUV</option>
                   <option value="rgb">RGB</option>
                 </select>
               </label>
-              <label class="field">
+              <label class="field" data-model-only="pilot_net">
                 <span>Output</span>
                 <select name="output_dim">
                   <option value="2">Acceleration + steer</option>
                   <option value="1">Steer only</option>
                 </select>
               </label>
-              <label class="field">
+              <label class="field" data-model-only="pilot_net">
                 <span>Loss</span>
                 <select name="loss_type">
                   <option value="smooth_l1">Weighted Smooth L1</option>
                   <option value="mse">MSE</option>
+                </select>
+              </label>
+              <label class="field" data-model-only="tiny_lidar_net" hidden>
+                <span>Architecture</span>
+                <select name="architecture">
+                  <option value="TinyLidarNet">TinyLidarNet</option>
+                  <option value="TinyLidarNetSmall">TinyLidarNetSmall</option>
+                </select>
+              </label>
+              <label class="field" data-model-only="tiny_lidar_net" hidden>
+                <span>LiDAR input points</span>
+                <input name="input_dim" type="number" value="750" min="32" required>
+              </label>
+              <label class="field" data-model-only="tiny_lidar_net" hidden>
+                <span>Max scan range (m)</span>
+                <input name="max_range" type="number" value="30" min="0.1" step="0.5" required>
+              </label>
+              <label class="field" data-model-only="tiny_lidar_net" hidden>
+                <span>Device</span>
+                <select name="device">
+                  <option value="auto">Auto</option>
+                  <option value="cuda">CUDA</option>
+                  <option value="cpu">CPU</option>
                 </select>
               </label>
               <label class="field">
@@ -235,11 +280,11 @@
                 <span>Acceleration weight</span>
                 <input name="accel_weight" type="number" value="1" min="0" step="0.1" required>
               </label>
-              <label class="field">
+              <label class="field" data-model-only="pilot_net">
                 <span>Shift range (px)</span>
                 <input name="shift_range" type="number" value="30" min="0" step="1" required>
               </label>
-              <label class="field span-2">
+              <label class="field span-2" data-model-only="pilot_net">
                 <span>Steer correction / px</span>
                 <input name="steer_correction_per_pixel" type="number" value="0.004" min="0" step="0.001" required>
               </label>
@@ -280,6 +325,13 @@
 
         <section class="panel evaluation-toolbar">
           <form id="evaluationForm" class="evaluation-form">
+            <label class="field small">
+              <span>Model</span>
+              <select name="model_type" id="evalModel">
+                <option value="pilot_net">PilotNet</option>
+                <option value="tiny_lidar_net">TinyLiDARNet</option>
+              </select>
+            </label>
             <label class="field">
               <span>Dataset</span>
               <select name="dataset_name" id="evalDataset" required></select>
@@ -303,6 +355,9 @@
             <input name="image_height" type="hidden" value="66">
             <input name="output_dim" type="hidden" value="2">
             <input name="color_space" type="hidden" value="yuv">
+            <input name="architecture" type="hidden" value="TinyLidarNet">
+            <input name="input_dim" type="hidden" value="750">
+            <input name="max_range" type="hidden" value="30">
             <input name="batch_size" type="hidden" value="128">
             <button class="button primary" type="submit">Run evaluation</button>
           </form>
@@ -330,7 +385,7 @@
               <div class="viewer-placeholder" id="viewerPlaceholder">
                 <div class="play-symbol">▶</div>
                 <strong>Evaluation result を読み込んでください</strong>
-                <span>各画像の target と prediction を重ねて確認できます。</span>
+                <span>各 sensor frame の target と prediction を重ねて確認できます。</span>
               </div>
             </div>
             <div class="timeline">

@@ -30,6 +30,7 @@ APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
 ML_ROOT = APP_DIR.parent
 PILOT_ROOT = ML_ROOT / "pilot_net"
+TINY_LIDAR_ROOT = ML_ROOT / "tiny_lidar_net"
 
 
 def env_path(name: str, default: Path) -> Path:
@@ -37,13 +38,55 @@ def env_path(name: str, default: Path) -> Path:
 
 
 RECORD_ROOT = env_path("E2E_RECORD_ROOT", Path("/aichallenge/record"))
-DATASETS_ROOT = env_path("E2E_DATASETS_ROOT", PILOT_ROOT / "datasets")
-OUTPUT_ROOT = env_path(
-    "E2E_STUDIO_OUTPUT_ROOT",
-    PILOT_ROOT / "outputs" / "learning_studio",
-)
-RUNS_ROOT = OUTPUT_ROOT / "runs"
-EVALUATIONS_ROOT = OUTPUT_ROOT / "evaluations"
+MODEL_SPECS = {
+    "pilot_net": {
+        "id": "pilot_net",
+        "label": "PilotNet",
+        "modality": "camera",
+        "workspace": PILOT_ROOT,
+        "datasets_root": env_path(
+            "E2E_PILOT_DATASETS_ROOT",
+            env_path("E2E_DATASETS_ROOT", PILOT_ROOT / "datasets"),
+        ),
+        "output_root": env_path(
+            "E2E_PILOT_OUTPUT_ROOT",
+            env_path(
+                "E2E_STUDIO_OUTPUT_ROOT",
+                PILOT_ROOT / "outputs" / "learning_studio",
+            ),
+        ),
+        "sample_file": "images.npy",
+        "required_files": ("images.npy", "steers.npy", "accelerations.npy"),
+        "defaults": {
+            "image_height": 66,
+            "image_width": 200,
+            "output_dim": 2,
+            "color_space": "yuv",
+        },
+    },
+    "tiny_lidar_net": {
+        "id": "tiny_lidar_net",
+        "label": "TinyLiDARNet",
+        "modality": "lidar",
+        "workspace": TINY_LIDAR_ROOT,
+        "datasets_root": env_path(
+            "E2E_TINY_LIDAR_DATASETS_ROOT",
+            TINY_LIDAR_ROOT / "datasets",
+        ),
+        "output_root": env_path(
+            "E2E_TINY_LIDAR_OUTPUT_ROOT",
+            TINY_LIDAR_ROOT / "outputs" / "learning_studio",
+        ),
+        "sample_file": "scans.npy",
+        "required_files": ("scans.npy", "steers.npy", "accelerations.npy"),
+        "defaults": {
+            "architecture": "TinyLidarNet",
+            "input_dim": 750,
+            "output_dim": 2,
+            "max_range": 30.0,
+        },
+    },
+}
 
 SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 MIME_TYPES = {
@@ -66,6 +109,22 @@ def safe_slug(value: Any, field_name: str) -> str:
             f"{field_name} は英数字、'.'、'_'、'-' のみで 1〜80 文字にしてください。"
         )
     return value
+
+
+def get_model_spec(value: Any) -> dict[str, Any]:
+    model_type = str(value or "pilot_net")
+    try:
+        return MODEL_SPECS[model_type]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported model_type: {model_type}") from exc
+
+
+def runs_root(spec: dict[str, Any]) -> Path:
+    return spec["output_root"] / "runs"
+
+
+def evaluations_root(spec: dict[str, Any]) -> Path:
+    return spec["output_root"] / "evaluations"
 
 
 def as_int(payload: dict[str, Any], key: str, minimum: int, maximum: int) -> int:
@@ -172,104 +231,141 @@ def discover_sequences() -> list[dict[str, Any]]:
     return sequences
 
 
-def count_samples(split_dir: Path) -> int:
+def count_samples(split_dir: Path, sample_file: str) -> int:
     import numpy as np
 
     total = 0
     if not split_dir.exists():
         return 0
-    for image_path in split_dir.glob("*/images.npy"):
+    for sample_path in split_dir.glob(f"*/{sample_file}"):
         try:
-            total += int(np.load(image_path, mmap_mode="r").shape[0])
+            total += int(np.load(sample_path, mmap_mode="r").shape[0])
         except Exception:
             continue
     return total
 
 
 def list_datasets() -> list[dict[str, Any]]:
-    if not DATASETS_ROOT.exists():
-        return []
     datasets = []
-    for dataset_dir in sorted(
-        (path for path in DATASETS_ROOT.iterdir() if path.is_dir()),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    ):
-        train_count = count_samples(dataset_dir / "train")
-        val_count = count_samples(dataset_dir / "val")
-        if train_count == 0 and val_count == 0 and not (dataset_dir / "dataset.json").exists():
+    for model_type, spec in MODEL_SPECS.items():
+        dataset_root = spec["datasets_root"]
+        if not dataset_root.exists():
             continue
-        datasets.append(
-            {
-                "name": dataset_dir.name,
-                "path": str(dataset_dir.resolve()),
-                "train_samples": train_count,
-                "val_samples": val_count,
-                "updated_at": dataset_dir.stat().st_mtime,
-            }
-        )
+        for dataset_dir in (
+            path for path in dataset_root.iterdir() if path.is_dir()
+        ):
+            train_count = count_samples(
+                dataset_dir / "train",
+                spec["sample_file"],
+            )
+            val_count = count_samples(
+                dataset_dir / "val",
+                spec["sample_file"],
+            )
+            if (
+                train_count == 0
+                and val_count == 0
+                and not (dataset_dir / "dataset.json").exists()
+            ):
+                continue
+            input_shape = None
+            for split in ("train", "val"):
+                sample_paths = list(
+                    (dataset_dir / split).glob(f"*/{spec['sample_file']}")
+                )
+                if not sample_paths:
+                    continue
+                try:
+                    import numpy as np
+
+                    input_shape = list(
+                        np.load(sample_paths[0], mmap_mode="r").shape[1:]
+                    )
+                except Exception:
+                    pass
+                break
+            datasets.append(
+                {
+                    "name": dataset_dir.name,
+                    "path": str(dataset_dir.resolve()),
+                    "model_type": model_type,
+                    "model_label": spec["label"],
+                    "train_samples": train_count,
+                    "val_samples": val_count,
+                    "input_shape": input_shape,
+                    "updated_at": dataset_dir.stat().st_mtime,
+                }
+            )
+    datasets.sort(key=lambda item: item["updated_at"], reverse=True)
     return datasets
 
 
 def list_checkpoints() -> list[dict[str, Any]]:
-    candidates: set[Path] = set()
-    for root in (PILOT_ROOT / "checkpoints", RUNS_ROOT):
-        if root.exists():
-            candidates.update(path.resolve() for path in root.rglob("*.pth"))
     checkpoints = []
-    for path in sorted(candidates, key=lambda item: item.stat().st_mtime, reverse=True):
-        label = path.name
-        model_config = {
-            "image_height": 66,
-            "image_width": 200,
-            "output_dim": 2,
-            "color_space": "yuv",
-        }
-        if is_relative_to(path, RUNS_ROOT):
-            relative = path.relative_to(RUNS_ROOT)
-            label = f"{relative.parts[0]} / {path.name}"
-            run_config_path = RUNS_ROOT / relative.parts[0] / "run.json"
-            if run_config_path.exists():
-                try:
-                    run_config = json.loads(run_config_path.read_text(encoding="utf-8"))
-                    model_config = {
-                        key: run_config.get(key, default)
-                        for key, default in model_config.items()
-                    }
-                except Exception:
-                    pass
-        checkpoints.append(
-            {
-                "name": label,
-                "path": str(path),
-                "size": path.stat().st_size,
-                "updated_at": path.stat().st_mtime,
-                "model": model_config,
-            }
-        )
+    for model_type, spec in MODEL_SPECS.items():
+        model_runs_root = runs_root(spec)
+        candidates: set[Path] = set()
+        for root in (spec["workspace"] / "checkpoints", model_runs_root):
+            if root.exists():
+                candidates.update(path.resolve() for path in root.rglob("*.pth"))
+        for path in candidates:
+            label = path.name
+            model_config = dict(spec["defaults"])
+            if is_relative_to(path, model_runs_root):
+                relative = path.relative_to(model_runs_root)
+                label = f"{relative.parts[0]} / {path.name}"
+                run_config_path = model_runs_root / relative.parts[0] / "run.json"
+                if run_config_path.exists():
+                    try:
+                        run_config = json.loads(
+                            run_config_path.read_text(encoding="utf-8")
+                        )
+                        model_config = {
+                            key: run_config.get(key, default)
+                            for key, default in model_config.items()
+                        }
+                    except Exception:
+                        pass
+            checkpoints.append(
+                {
+                    "name": label,
+                    "path": str(path),
+                    "model_type": model_type,
+                    "model_label": spec["label"],
+                    "size": path.stat().st_size,
+                    "updated_at": path.stat().st_mtime,
+                    "model": model_config,
+                }
+            )
+    checkpoints.sort(key=lambda item: item["updated_at"], reverse=True)
     return checkpoints
 
 
 def list_evaluations() -> list[dict[str, Any]]:
-    if not EVALUATIONS_ROOT.exists():
-        return []
     evaluations = []
-    for manifest_path in EVALUATIONS_ROOT.glob("*/manifest.json"):
-        try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            evaluations.append(
-                {
-                    "name": manifest_path.parent.name,
-                    "path": str(manifest_path.parent.resolve()),
-                    **manifest.get("summary", {}),
-                    "created_at": manifest.get("created_at", ""),
-                    "dataset_name": manifest.get("dataset_name", ""),
-                    "split": manifest.get("split", ""),
-                    "checkpoint_name": Path(manifest.get("checkpoint", "")).name,
-                }
-            )
-        except Exception:
-            continue
+    for model_type, spec in MODEL_SPECS.items():
+        for manifest_path in evaluations_root(spec).glob("*/manifest.json"):
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                name = manifest_path.parent.name
+                evaluations.append(
+                    {
+                        "id": f"{model_type}:{name}",
+                        "name": name,
+                        "model_type": model_type,
+                        "model_label": spec["label"],
+                        "path": str(manifest_path.parent.resolve()),
+                        **manifest.get("summary", {}),
+                        "created_at": manifest.get("created_at", ""),
+                        "dataset_name": manifest.get("dataset_name", ""),
+                        "split": manifest.get("split", ""),
+                        "checkpoint_name": Path(
+                            manifest.get("checkpoint", "")
+                        ).name,
+                    }
+                )
+            except Exception:
+                continue
     evaluations.sort(key=lambda item: item.get("created_at", ""), reverse=True)
     return evaluations
 
@@ -407,8 +503,10 @@ def refresh_sequence_cache() -> list[dict[str, Any]]:
 
 
 def start_extraction(payload: dict[str, Any]) -> Job:
+    spec = get_model_spec(payload.get("model_type"))
+    model_type = spec["id"]
     dataset_name = safe_slug(payload.get("dataset_name"), "dataset_name")
-    dataset_dir = (DATASETS_ROOT / dataset_name).resolve()
+    dataset_dir = (spec["datasets_root"] / dataset_name).resolve()
     if dataset_dir.exists():
         raise ValueError(f"dataset '{dataset_name}' は既に存在します。別名を指定してください。")
 
@@ -424,24 +522,18 @@ def start_extraction(payload: dict[str, Any]) -> Job:
     if not selected:
         raise ValueError("train または val に割り当てた sequence がありません。")
 
-    image_topic = str(payload.get("image_topic", "/sensing/camera/image_raw")).strip()
     control_topic = str(payload.get("control_topic", "/control/command/control_cmd")).strip()
-    if not image_topic.startswith("/") or not control_topic.startswith("/"):
+    if not control_topic.startswith("/"):
         raise ValueError("topic 名は '/' から始めてください。")
-    image_height = as_int(payload, "image_height", 16, 2160)
-    image_width = as_int(payload, "image_width", 16, 3840)
-    crop_top_ratio = as_float(payload, "crop_top_ratio", 0.0, 0.95)
     workers = as_int(payload, "workers", 1, 32)
 
     manifest = {
         "name": dataset_name,
+        "model_type": model_type,
+        "model_label": spec["label"],
         "created_at": utc_now(),
         "record_root": str(RECORD_ROOT),
-        "image_topic": image_topic,
         "control_topic": control_topic,
-        "image_height": image_height,
-        "image_width": image_width,
-        "crop_top_ratio": crop_top_ratio,
         "assignments": [
             {
                 "id": sequence["id"],
@@ -452,6 +544,36 @@ def start_extraction(payload: dict[str, Any]) -> Job:
             for sequence, split in selected
         ],
     }
+    if model_type == "pilot_net":
+        image_topic = str(
+            payload.get("image_topic", "/sensing/camera/image_raw")
+        ).strip()
+        if not image_topic.startswith("/"):
+            raise ValueError("topic 名は '/' から始めてください。")
+        image_height = as_int(payload, "image_height", 16, 2160)
+        image_width = as_int(payload, "image_width", 16, 3840)
+        crop_top_ratio = as_float(payload, "crop_top_ratio", 0.0, 0.95)
+        manifest.update(
+            {
+                "image_topic": image_topic,
+                "image_height": image_height,
+                "image_width": image_width,
+                "crop_top_ratio": crop_top_ratio,
+            }
+        )
+    else:
+        scan_topic = str(
+            payload.get("scan_topic", "/sensing/lidar/scan")
+        ).strip()
+        if not scan_topic.startswith("/"):
+            raise ValueError("topic 名は '/' から始めてください。")
+        max_range = as_float(payload, "max_range", 0.1, 10000.0)
+        manifest.update(
+            {
+                "scan_topic": scan_topic,
+                "max_range": max_range,
+            }
+        )
 
     def task(job: Job) -> None:
         dataset_dir.mkdir(parents=True)
@@ -477,25 +599,39 @@ def start_extraction(payload: dict[str, Any]) -> Job:
             command = [
                 sys.executable,
                 "-u",
-                str(PILOT_ROOT / "extract_data_from_bag.py"),
+                str(spec["workspace"] / "extract_data_from_bag.py"),
                 "--seq-dirs",
                 sequence["path"],
                 "--outdir",
                 str(temp_root),
-                "--image-topic",
-                image_topic,
                 "--control-topic",
                 control_topic,
-                "--image-height",
-                str(image_height),
-                "--image-width",
-                str(image_width),
-                "--crop-top-ratio",
-                str(crop_top_ratio),
                 "--workers",
                 str(workers),
             ]
-            job.run_command(command, PILOT_ROOT)
+            if model_type == "pilot_net":
+                command.extend(
+                    [
+                        "--image-topic",
+                        image_topic,
+                        "--image-height",
+                        str(image_height),
+                        "--image-width",
+                        str(image_width),
+                        "--crop-top-ratio",
+                        str(crop_top_ratio),
+                    ]
+                )
+            else:
+                command.extend(
+                    [
+                        "--scan-topic",
+                        scan_topic,
+                        "--max-scan-range",
+                        str(max_range),
+                    ]
+                )
+            job.run_command(command, spec["workspace"])
             extracted_dir = temp_root / Path(sequence["path"]).name
             if not extracted_dir.exists():
                 raise RuntimeError(
@@ -512,12 +648,26 @@ def start_extraction(payload: dict[str, Any]) -> Job:
 
 
 def start_training(payload: dict[str, Any]) -> Job:
+    spec = get_model_spec(payload.get("model_type"))
+    model_type = spec["id"]
     dataset_name = safe_slug(payload.get("dataset_name"), "dataset_name")
     run_name = safe_slug(payload.get("run_name"), "run_name")
-    dataset_dir = require_child(DATASETS_ROOT / dataset_name, DATASETS_ROOT, "dataset")
+    dataset_dir = require_child(
+        spec["datasets_root"] / dataset_name,
+        spec["datasets_root"],
+        "dataset",
+    )
     if not dataset_dir.exists():
         raise ValueError(f"dataset '{dataset_name}' が見つかりません。")
-    run_dir = (RUNS_ROOT / run_name).resolve()
+    train_samples = count_samples(dataset_dir / "train", spec["sample_file"])
+    val_samples = count_samples(dataset_dir / "val", spec["sample_file"])
+    if train_samples == 0:
+        raise ValueError("training split に sample がありません。")
+    if model_type == "tiny_lidar_net" and val_samples == 0:
+        raise ValueError(
+            "TinyLiDARNet の学習には validation split が必要です。"
+        )
+    run_dir = (runs_root(spec) / run_name).resolve()
     if run_dir.exists():
         raise ValueError(f"run '{run_name}' は既に存在します。別名を指定してください。")
 
@@ -525,60 +675,124 @@ def start_training(payload: dict[str, Any]) -> Job:
     batch_size = as_int(payload, "batch_size", 1, 4096)
     num_workers = as_int(payload, "num_workers", 0, 64)
     early_stop = as_int(payload, "early_stop_patience", 1, 10000)
-    image_height = as_int(payload, "image_height", 16, 2160)
-    image_width = as_int(payload, "image_width", 16, 3840)
-    output_dim = as_int(payload, "output_dim", 1, 2)
     lr = as_float(payload, "lr", 1e-8, 10.0)
-    weight_decay = as_float(payload, "weight_decay", 0.0, 10.0)
     steer_weight = as_float(payload, "steer_weight", 0.0, 1000.0)
     accel_weight = as_float(payload, "accel_weight", 0.0, 1000.0)
-    shift_range = as_float(payload, "shift_range", 0.0, 10000.0)
-    steer_correction = as_float(
-        payload,
-        "steer_correction_per_pixel",
-        0.0,
-        100.0,
-    )
-    color_space = str(payload.get("color_space", "yuv")).lower()
-    if color_space not in {"rgb", "yuv"}:
-        raise ValueError("color_space must be rgb or yuv")
-    loss_type = str(payload.get("loss_type", "smooth_l1")).lower()
-    if loss_type not in {"smooth_l1", "mse"}:
-        raise ValueError("loss_type must be smooth_l1 or mse")
 
     pretrained = str(payload.get("pretrained_path", "")).strip()
     pretrained_path = None
     if pretrained:
-        pretrained_path = require_child(pretrained, PILOT_ROOT, "checkpoint")
+        pretrained_path = require_child(
+            pretrained,
+            spec["workspace"],
+            "checkpoint",
+        )
         if not pretrained_path.is_file():
             raise ValueError("pretrained checkpoint が見つかりません。")
 
     config = {
+        "model_type": model_type,
         "run_name": run_name,
         "dataset_name": dataset_name,
         "created_at": utc_now(),
-        **{
-            key: payload.get(key)
-            for key in (
-                "epochs",
-                "batch_size",
-                "num_workers",
-                "early_stop_patience",
-                "image_height",
-                "image_width",
-                "output_dim",
-                "lr",
-                "weight_decay",
-                "steer_weight",
-                "accel_weight",
-                "shift_range",
-                "steer_correction_per_pixel",
-                "color_space",
-                "loss_type",
-                "pretrained_path",
-            )
-        },
+        "epochs": epochs,
+        "batch_size": batch_size,
+        "num_workers": num_workers,
+        "early_stop_patience": early_stop,
+        "lr": lr,
+        "steer_weight": steer_weight,
+        "accel_weight": accel_weight,
+        "pretrained_path": str(pretrained_path) if pretrained_path else None,
     }
+
+    common_command = [
+        sys.executable,
+        "-u",
+        str(spec["workspace"] / "train.py"),
+        f"data.train_dir={dataset_dir / 'train'}",
+        f"data.val_dir={dataset_dir / 'val'}",
+        f"train.epochs={epochs}",
+        f"train.batch_size={batch_size}",
+        f"train.num_workers={num_workers}",
+        f"train.lr={lr}",
+        f"train.early_stop_patience={early_stop}",
+        f"train.save_dir={run_dir / 'checkpoints'}",
+        f"train.log_dir={run_dir / 'logs'}",
+        f"train.loss.steer_weight={steer_weight}",
+        f"train.loss.accel_weight={accel_weight}",
+        f"hydra.run.dir={run_dir / 'hydra'}",
+    ]
+    if pretrained_path:
+        common_command.append(f"train.pretrained_path={pretrained_path}")
+
+    if model_type == "pilot_net":
+        image_height = as_int(payload, "image_height", 16, 2160)
+        image_width = as_int(payload, "image_width", 16, 3840)
+        output_dim = as_int(payload, "output_dim", 1, 2)
+        weight_decay = as_float(payload, "weight_decay", 0.0, 10.0)
+        shift_range = as_float(payload, "shift_range", 0.0, 10000.0)
+        steer_correction = as_float(
+            payload,
+            "steer_correction_per_pixel",
+            0.0,
+            100.0,
+        )
+        color_space = str(payload.get("color_space", "yuv")).lower()
+        if color_space not in {"rgb", "yuv"}:
+            raise ValueError("color_space must be rgb or yuv")
+        loss_type = str(payload.get("loss_type", "smooth_l1")).lower()
+        if loss_type not in {"smooth_l1", "mse"}:
+            raise ValueError("loss_type must be smooth_l1 or mse")
+        config.update(
+            {
+                "image_height": image_height,
+                "image_width": image_width,
+                "output_dim": output_dim,
+                "color_space": color_space,
+                "weight_decay": weight_decay,
+                "shift_range": shift_range,
+                "steer_correction_per_pixel": steer_correction,
+                "loss_type": loss_type,
+            }
+        )
+        command = common_command + [
+            f"model.image_height={image_height}",
+            f"model.image_width={image_width}",
+            f"model.output_dim={output_dim}",
+            f"model.color_space={color_space}",
+            "model.crop_top_ratio=0.0",
+            "model.crop_bottom_ratio=0.0",
+            f"train.weight_decay={weight_decay}",
+            f"train.shift_range={shift_range}",
+            f"train.steer_correction_per_pixel={steer_correction}",
+        ]
+        if loss_type == "mse":
+            command.append("+train.loss_type=mse")
+    else:
+        architecture = str(payload.get("architecture", "TinyLidarNet"))
+        if architecture not in {"TinyLidarNet", "TinyLidarNetSmall"}:
+            raise ValueError("Unsupported TinyLiDARNet architecture")
+        input_dim = as_int(payload, "input_dim", 32, 100000)
+        max_range = as_float(payload, "max_range", 0.1, 10000.0)
+        device = str(payload.get("device", "auto")).lower()
+        if device not in {"auto", "cpu", "cuda"}:
+            raise ValueError("device must be auto, cpu, or cuda")
+        config.update(
+            {
+                "architecture": architecture,
+                "input_dim": input_dim,
+                "output_dim": 2,
+                "max_range": max_range,
+                "device": device,
+            }
+        )
+        command = common_command + [
+            f"model.name={architecture}",
+            f"model.input_dim={input_dim}",
+            "model.output_dim=2",
+            f"data.max_range={max_range}",
+            f"train.device={device}",
+        ]
 
     def task(job: Job) -> None:
         run_dir.mkdir(parents=True)
@@ -586,68 +800,76 @@ def start_training(payload: dict[str, Any]) -> Job:
             json.dumps(config, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        command = [
-            sys.executable,
-            "-u",
-            str(PILOT_ROOT / "train.py"),
-            f"data.train_dir={dataset_dir / 'train'}",
-            f"data.val_dir={dataset_dir / 'val'}",
-            f"model.image_height={image_height}",
-            f"model.image_width={image_width}",
-            f"model.output_dim={output_dim}",
-            f"model.color_space={color_space}",
-            "model.crop_top_ratio=0.0",
-            "model.crop_bottom_ratio=0.0",
-            f"train.epochs={epochs}",
-            f"train.batch_size={batch_size}",
-            f"train.num_workers={num_workers}",
-            f"train.lr={lr}",
-            f"train.weight_decay={weight_decay}",
-            f"train.early_stop_patience={early_stop}",
-            f"train.save_dir={run_dir / 'checkpoints'}",
-            f"train.log_dir={run_dir / 'logs'}",
-            f"train.loss.steer_weight={steer_weight}",
-            f"train.loss.accel_weight={accel_weight}",
-            f"train.shift_range={shift_range}",
-            f"train.steer_correction_per_pixel={steer_correction}",
-            f"hydra.run.dir={run_dir / 'hydra'}",
-        ]
-        if pretrained_path:
-            command.append(f"train.pretrained_path={pretrained_path}")
-        if loss_type == "mse":
-            command.append("+train.loss_type=mse")
-        job.run_command(command, PILOT_ROOT)
+        job.run_command(command, spec["workspace"])
         job.append(f"[DONE] Training completed: {run_dir}")
 
     return JOBS.start("train", run_name, task)
 
 
 def start_evaluation(payload: dict[str, Any]) -> Job:
+    spec = get_model_spec(payload.get("model_type"))
+    model_type = spec["id"]
     evaluation_name = safe_slug(payload.get("evaluation_name"), "evaluation_name")
     dataset_name = safe_slug(payload.get("dataset_name"), "dataset_name")
     split = str(payload.get("split", "val"))
     if split not in {"train", "val"}:
         raise ValueError("split must be train or val")
-    dataset_dir = require_child(DATASETS_ROOT / dataset_name, DATASETS_ROOT, "dataset")
+    dataset_dir = require_child(
+        spec["datasets_root"] / dataset_name,
+        spec["datasets_root"],
+        "dataset",
+    )
     split_dir = dataset_dir / split
     if not split_dir.exists():
         raise ValueError(f"{dataset_name}/{split} が見つかりません。")
-    checkpoint = require_child(payload.get("checkpoint"), PILOT_ROOT, "checkpoint")
+    checkpoint = require_child(
+        payload.get("checkpoint"),
+        spec["workspace"],
+        "checkpoint",
+    )
     if not checkpoint.is_file():
         raise ValueError("checkpoint が見つかりません。")
-    output_dir = (EVALUATIONS_ROOT / evaluation_name).resolve()
+    output_dir = (evaluations_root(spec) / evaluation_name).resolve()
     if output_dir.exists():
         raise ValueError(
             f"evaluation '{evaluation_name}' は既に存在します。別名を指定してください。"
         )
 
-    image_height = as_int(payload, "image_height", 16, 2160)
-    image_width = as_int(payload, "image_width", 16, 3840)
-    output_dim = as_int(payload, "output_dim", 1, 2)
     batch_size = as_int(payload, "batch_size", 1, 4096)
-    color_space = str(payload.get("color_space", "yuv")).lower()
-    if color_space not in {"rgb", "yuv"}:
-        raise ValueError("color_space must be rgb or yuv")
+    command_options: list[str]
+    if model_type == "pilot_net":
+        image_height = as_int(payload, "image_height", 16, 2160)
+        image_width = as_int(payload, "image_width", 16, 3840)
+        output_dim = as_int(payload, "output_dim", 1, 2)
+        color_space = str(payload.get("color_space", "yuv")).lower()
+        if color_space not in {"rgb", "yuv"}:
+            raise ValueError("color_space must be rgb or yuv")
+        command_options = [
+            "--image-height",
+            str(image_height),
+            "--image-width",
+            str(image_width),
+            "--output-dim",
+            str(output_dim),
+            "--color-space",
+            color_space,
+        ]
+    else:
+        architecture = str(payload.get("architecture", "TinyLidarNet"))
+        if architecture not in {"TinyLidarNet", "TinyLidarNetSmall"}:
+            raise ValueError("Unsupported TinyLiDARNet architecture")
+        input_dim = as_int(payload, "input_dim", 32, 100000)
+        max_range = as_float(payload, "max_range", 0.1, 10000.0)
+        command_options = [
+            "--architecture",
+            architecture,
+            "--input-dim",
+            str(input_dim),
+            "--output-dim",
+            "2",
+            "--max-range",
+            str(max_range),
+        ]
 
     def task(job: Job) -> None:
         output_dir.mkdir(parents=True)
@@ -655,6 +877,8 @@ def start_evaluation(payload: dict[str, Any]) -> Job:
             sys.executable,
             "-u",
             str(APP_DIR / "evaluate.py"),
+            "--model-type",
+            model_type,
             "--dataset-dir",
             str(split_dir),
             "--dataset-name",
@@ -665,17 +889,9 @@ def start_evaluation(payload: dict[str, Any]) -> Job:
             str(checkpoint),
             "--output-dir",
             str(output_dir),
-            "--image-height",
-            str(image_height),
-            "--image-width",
-            str(image_width),
-            "--output-dim",
-            str(output_dim),
-            "--color-space",
-            color_space,
             "--batch-size",
             str(batch_size),
-        ]
+        ] + command_options
         job.run_command(command, APP_DIR)
         load_evaluation.cache_clear()
         job.append(f"[DONE] Evaluation completed: {output_dir}")
@@ -683,21 +899,33 @@ def start_evaluation(payload: dict[str, Any]) -> Job:
     return JOBS.start("evaluate", evaluation_name, task)
 
 
-@lru_cache(maxsize=6)
-def load_evaluation(name: str) -> tuple[dict[str, Any], Any]:
+def parse_evaluation_ref(reference: str) -> tuple[dict[str, Any], str]:
+    if ":" in reference:
+        model_type, name = reference.split(":", 1)
+    else:
+        model_type, name = "pilot_net", reference
+    return get_model_spec(model_type), safe_slug(name, "evaluation")
+
+
+@lru_cache(maxsize=8)
+def load_evaluation(reference: str) -> tuple[dict[str, Any], Any]:
     import numpy as np
 
-    safe_slug(name, "evaluation")
-    evaluation_dir = require_child(EVALUATIONS_ROOT / name, EVALUATIONS_ROOT, "evaluation")
+    spec, name = parse_evaluation_ref(reference)
+    root = evaluations_root(spec)
+    evaluation_dir = require_child(root / name, root, "evaluation")
     manifest = json.loads((evaluation_dir / "manifest.json").read_text(encoding="utf-8"))
+    manifest.setdefault("model_type", spec["id"])
+    manifest.setdefault("model_label", spec["label"])
     results = np.load(evaluation_dir / "results.npz", allow_pickle=False)
     return manifest, results
 
 
-def evaluation_detail(name: str) -> dict[str, Any]:
+def evaluation_detail(reference: str) -> dict[str, Any]:
     import numpy as np
 
-    manifest, results = load_evaluation(name)
+    spec, name = parse_evaluation_ref(reference)
+    manifest, results = load_evaluation(reference)
     frame_count = int(manifest["summary"]["frame_count"])
     sample_count = min(frame_count, 700)
     sample_indices = (
@@ -712,6 +940,7 @@ def evaluation_detail(name: str) -> dict[str, Any]:
         else np.array([], dtype=np.int64)
     )
     return {
+        "id": f"{spec['id']}:{name}",
         "name": name,
         **manifest,
         "series": {
@@ -719,7 +948,7 @@ def evaluation_detail(name: str) -> dict[str, Any]:
             "mae": results["mae"][sample_indices].astype(float).tolist(),
             "steer_error": results["steer_error"][sample_indices].astype(float).tolist(),
         },
-        "worst": [frame_info(name, int(index)) for index in worst_indices],
+        "worst": [frame_info(reference, int(index)) for index in worst_indices],
     }
 
 
@@ -735,8 +964,8 @@ def locate_frame(manifest: dict[str, Any], index: int) -> tuple[dict[str, Any], 
     raise ValueError("frame mapping not found")
 
 
-def frame_info(name: str, index: int) -> dict[str, Any]:
-    manifest, results = load_evaluation(name)
+def frame_info(reference: str, index: int) -> dict[str, Any]:
+    manifest, results = load_evaluation(reference)
     sequence, local_index = locate_frame(manifest, index)
     target = results["targets"][index].astype(float).tolist()
     prediction = results["predictions"][index].astype(float).tolist()
@@ -759,23 +988,73 @@ def frame_info(name: str, index: int) -> dict[str, Any]:
     }
 
 
-def render_frame(name: str, index: int, overlay: bool) -> bytes:
+def render_frame(reference: str, index: int, overlay: bool) -> bytes:
     import cv2
     import numpy as np
 
-    manifest, results = load_evaluation(name)
+    manifest, results = load_evaluation(reference)
     sequence, local_index = locate_frame(manifest, index)
-    images = np.load(Path(sequence["path"]) / "images.npy", mmap_mode="r")
-    rgb = np.asarray(images[local_index]).copy()
-    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-    scale = max(2, min(6, 1000 // max(1, bgr.shape[1])))
-    bgr = cv2.resize(
-        bgr,
-        (bgr.shape[1] * scale, bgr.shape[0] * scale),
-        interpolation=cv2.INTER_NEAREST,
-    )
+    if manifest.get("model_type", "pilot_net") == "tiny_lidar_net":
+        scans = np.load(Path(sequence["path"]) / "scans.npy", mmap_mode="r")
+        scan = np.asarray(scans[local_index], dtype=np.float32)
+        max_range = float(manifest["model"].get("max_range", 30.0))
+        bgr = np.full((620, 1000, 3), (10, 15, 20), dtype=np.uint8)
+        origin = (500, 560)
+        radius = 460
+        for fraction in (0.25, 0.5, 0.75, 1.0):
+            cv2.ellipse(
+                bgr,
+                origin,
+                (int(radius * fraction), int(radius * fraction)),
+                0,
+                200,
+                140,
+                (39, 54, 66),
+                1,
+                cv2.LINE_AA,
+            )
+        angles = np.linspace(-3 * np.pi / 4, 3 * np.pi / 4, len(scan))
+        distances = np.clip(np.nan_to_num(scan), 0.0, max_range)
+        pixels = distances / max_range * radius
+        points = np.column_stack(
+            (
+                origin[0] + np.sin(angles) * pixels,
+                origin[1] - np.cos(angles) * pixels,
+            )
+        ).astype(np.int32)
+        valid = distances > 0.02
+        for point in points[valid][:: max(1, len(points) // 1400)]:
+            cv2.circle(
+                bgr,
+                (int(point[0]), int(point[1])),
+                2,
+                (173, 211, 109),
+                -1,
+                cv2.LINE_AA,
+            )
+        cv2.circle(bgr, origin, 7, (112, 213, 159), -1, cv2.LINE_AA)
+        cv2.putText(
+            bgr,
+            f"LiDAR scan  {len(scan)} points  max {max_range:g} m",
+            (22, 36),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.68,
+            (145, 160, 174),
+            2,
+            cv2.LINE_AA,
+        )
+    else:
+        images = np.load(Path(sequence["path"]) / "images.npy", mmap_mode="r")
+        rgb = np.asarray(images[local_index]).copy()
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        scale = max(2, min(6, 1000 // max(1, bgr.shape[1])))
+        bgr = cv2.resize(
+            bgr,
+            (bgr.shape[1] * scale, bgr.shape[0] * scale),
+            interpolation=cv2.INTER_NEAREST,
+        )
     if overlay:
-        info = frame_info(name, index)
+        info = frame_info(reference, index)
         bgr = cv2.copyMakeBorder(
             bgr,
             64,
@@ -834,10 +1113,19 @@ def app_state() -> dict[str, Any]:
     return {
         "config": {
             "record_root": str(RECORD_ROOT),
-            "datasets_root": str(DATASETS_ROOT),
-            "output_root": str(OUTPUT_ROOT),
             "record_root_exists": RECORD_ROOT.exists(),
             "python": sys.executable,
+            "models": [
+                {
+                    "id": spec["id"],
+                    "label": spec["label"],
+                    "modality": spec["modality"],
+                    "datasets_root": str(spec["datasets_root"]),
+                    "output_root": str(spec["output_root"]),
+                    "defaults": spec["defaults"],
+                }
+                for spec in MODEL_SPECS.values()
+            ],
         },
         "sequences": sequences,
         "datasets": list_datasets(),
@@ -966,9 +1254,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    DATASETS_ROOT.mkdir(parents=True, exist_ok=True)
-    RUNS_ROOT.mkdir(parents=True, exist_ok=True)
-    EVALUATIONS_ROOT.mkdir(parents=True, exist_ok=True)
+    for spec in MODEL_SPECS.values():
+        spec["datasets_root"].mkdir(parents=True, exist_ok=True)
+        runs_root(spec).mkdir(parents=True, exist_ok=True)
+        evaluations_root(spec).mkdir(parents=True, exist_ok=True)
     refresh_sequence_cache()
 
     server = ThreadingHTTPServer((args.host, args.port), StudioHandler)

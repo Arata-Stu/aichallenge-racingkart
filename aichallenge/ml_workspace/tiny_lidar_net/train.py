@@ -47,16 +47,26 @@ def main(cfg: DictConfig):
     print(f"Using device: {device}")
 
     # === Dataset ===
-    train_dataset = MultiSeqConcatDataset(cfg.data.train_dir)
-    val_dataset = MultiSeqConcatDataset(cfg.data.val_dir)
+    max_range = cfg.data.get("max_range", 30.0)
+    train_dataset = MultiSeqConcatDataset(cfg.data.train_dir, max_range=max_range)
+    val_dataset = MultiSeqConcatDataset(cfg.data.val_dir, max_range=max_range)
+
+    effective_batch_size = min(cfg.train.batch_size, len(train_dataset))
+    drop_last = len(train_dataset) >= cfg.train.batch_size
+    if effective_batch_size != cfg.train.batch_size:
+        print(
+            f"[WARN] train_dataset size ({len(train_dataset)}) < "
+            f"batch_size ({cfg.train.batch_size}). "
+            f"Using batch_size={effective_batch_size}."
+        )
 
     train_loader = DataLoader(
         train_dataset,
-        batch_size=cfg.train.batch_size,
+        batch_size=effective_batch_size,
         shuffle=True,
         num_workers=cfg.train.num_workers,
         pin_memory=True,
-        drop_last=True
+        drop_last=drop_last
     )
 
     val_loader = DataLoader(

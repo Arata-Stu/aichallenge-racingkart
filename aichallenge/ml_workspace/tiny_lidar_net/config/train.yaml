@@ -2,6 +2,7 @@ data:
   # データセットのディレクトリパス
   train_dir: "/aichallenge/ml_workspace/tiny_lidar_net/dataset/train"
   val_dir: "/aichallenge/ml_workspace/tiny_lidar_net/dataset/val"
+  max_range: 30.0
 
 model:
   # "TinyLidarNet" または "TinyLidarNetSmall"

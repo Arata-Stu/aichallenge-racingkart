@@ -474,6 +474,10 @@ td {
   min-width: 0;
 }
 
+.field[hidden] {
+  display: none;
+}
+
 .field > span {
   color: var(--muted);
   font-size: 11px;
@@ -610,6 +614,13 @@ td {
 
 .artifact strong {
   font-size: 12px;
+}
+
+.artifact small {
+  margin-left: 6px;
+  color: var(--mint);
+  font-size: 9px;
+  font-weight: 750;
 }
 
 .artifact span {
