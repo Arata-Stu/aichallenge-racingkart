@@ -1,0 +1,538 @@
+const state = {
+  config: {},
+  sequences: [],
+  datasets: [],
+  checkpoints: [],
+  evaluations: [],
+  assignments: new Map(),
+  job: null,
+  evaluation: null,
+  frameIndex: 0,
+  playing: false,
+  playTimer: null,
+};
+
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function formatNumber(value) {
+  return new Intl.NumberFormat("ja-JP").format(Number(value || 0));
+}
+
+function timestampName(prefix) {
+  const now = new Date();
+  const stamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+    "-",
+    String(now.getHours()).padStart(2, "0"),
+    String(now.getMinutes()).padStart(2, "0"),
+    String(now.getSeconds()).padStart(2, "0"),
+  ].join("");
+  return `${prefix}_${stamp}`;
+}
+
+function formObject(form) {
+  return Object.fromEntries(new FormData(form).entries());
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || `${response.status} ${response.statusText}`);
+  }
+  return payload;
+}
+
+function toast(message, type = "success") {
+  const item = document.createElement("div");
+  item.className = `toast ${type === "error" ? "error" : ""}`;
+  item.textContent = message;
+  $("#toastRegion").append(item);
+  setTimeout(() => item.remove(), 4200);
+}
+
+function setView(name) {
+  $$(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === name));
+  $$(".view").forEach((view) => view.classList.toggle("active", view.id === `view-${name}`));
+}
+
+async function refreshState({ quiet = false } = {}) {
+  try {
+    const payload = await api("/api/state");
+    Object.assign(state, payload);
+    renderAll();
+    if (!quiet) toast("最新の状態を読み込みました。");
+  } catch (error) {
+    $("#connectionLabel").textContent = "Connection failed";
+    toast(error.message, "error");
+  }
+}
+
+function renderAll() {
+  $("#connectionLabel").textContent = `Connected on ${state.config.python || "python"}`;
+  $("#recordRoot").textContent = state.config.record_root || "/aichallenge/record";
+  renderSequences();
+  renderDatasetOptions();
+  renderCheckpoints();
+  renderEvaluationOptions();
+  renderJob(state.job);
+}
+
+function renderSequences() {
+  const query = $("#sequenceFilter").value.trim().toLowerCase();
+  const visible = state.sequences.filter((sequence) => {
+    const text = [
+      sequence.name,
+      sequence.relative_path,
+      ...sequence.topics.map((topic) => `${topic.name} ${topic.type}`),
+    ].join(" ").toLowerCase();
+    return !query || text.includes(query);
+  });
+  $("#bagCount").textContent = formatNumber(state.sequences.length);
+  $("#messageCount").textContent = formatNumber(
+    state.sequences.reduce((sum, sequence) => sum + sequence.messages, 0),
+  );
+  $("#sequenceEmpty").hidden = visible.length > 0;
+  $("#sequenceRows").innerHTML = visible.map((sequence) => {
+    const split = state.assignments.get(sequence.id) || "unused";
+    const topics = sequence.topics.slice(0, 3)
+      .map((topic) => `<span class="topic" title="${escapeHtml(topic.type)}">${escapeHtml(topic.name)}</span>`)
+      .join("");
+    const more = sequence.topics.length > 3
+      ? `<span class="topic more-topics">+${sequence.topics.length - 3} more</span>`
+      : "";
+    return `
+      <tr>
+        <td>
+          <select class="split-select" data-sequence-id="${sequence.id}" data-split="${split}">
+            <option value="unused" ${split === "unused" ? "selected" : ""}>Unused</option>
+            <option value="train" ${split === "train" ? "selected" : ""}>Train</option>
+            <option value="val" ${split === "val" ? "selected" : ""}>Validation</option>
+            <option value="both" ${split === "both" ? "selected" : ""}>Both</option>
+          </select>
+        </td>
+        <td class="sequence-name">
+          <strong title="${escapeHtml(sequence.relative_path)}">${escapeHtml(sequence.name)}</strong>
+          <span>${escapeHtml(sequence.relative_path)}</span>
+        </td>
+        <td>${escapeHtml(sequence.duration)}</td>
+        <td>${formatNumber(sequence.messages)}</td>
+        <td><div class="topic-stack">${topics}${more}</div></td>
+      </tr>
+    `;
+  }).join("");
+
+  $$(".split-select").forEach((select) => {
+    select.addEventListener("change", () => {
+      state.assignments.set(select.dataset.sequenceId, select.value);
+      select.dataset.split = select.value;
+      renderSelectionMetrics();
+    });
+  });
+  renderSelectionMetrics();
+}
+
+function renderSelectionMetrics() {
+  let train = 0;
+  let val = 0;
+  state.sequences.forEach((sequence) => {
+    const split = state.assignments.get(sequence.id) || "unused";
+    if (split === "train" || split === "both") train += 1;
+    if (split === "val" || split === "both") val += 1;
+  });
+  $("#trainCount").textContent = formatNumber(train);
+  $("#valCount").textContent = formatNumber(val);
+  $("#selectionSummary").textContent = train || val
+    ? `Train ${train} sequence / Validation ${val} sequence を抽出します。`
+    : "sequence を選択してください";
+}
+
+function optionMarkup(items, label, value, emptyText) {
+  if (!items.length) return `<option value="">${escapeHtml(emptyText)}</option>`;
+  return items.map((item) => `<option value="${escapeHtml(value(item))}">${escapeHtml(label(item))}</option>`).join("");
+}
+
+function renderDatasetOptions() {
+  const markup = optionMarkup(
+    state.datasets,
+    (dataset) => `${dataset.name} · train ${formatNumber(dataset.train_samples)} / val ${formatNumber(dataset.val_samples)}`,
+    (dataset) => dataset.name,
+    "Dataset がありません",
+  );
+  ["#trainDataset", "#evalDataset"].forEach((selector) => {
+    const select = $(selector);
+    const current = select.value;
+    select.innerHTML = markup;
+    if ([...select.options].some((option) => option.value === current)) select.value = current;
+  });
+}
+
+function renderCheckpoints() {
+  $("#checkpointCount").textContent = formatNumber(state.checkpoints.length);
+  $("#checkpointList").innerHTML = state.checkpoints.length
+    ? state.checkpoints.map((checkpoint) => `
+        <div class="artifact">
+          <strong>${escapeHtml(checkpoint.name)}</strong>
+          <span title="${escapeHtml(checkpoint.path)}">${escapeHtml(checkpoint.path)}</span>
+        </div>
+      `).join("")
+    : '<div class="empty-inline">Checkpoint はまだありません。</div>';
+
+  const evalMarkup = optionMarkup(
+    state.checkpoints,
+    (checkpoint) => checkpoint.name,
+    (checkpoint) => checkpoint.path,
+    "Checkpoint がありません",
+  );
+  const previousEval = $("#evalCheckpoint").value;
+  $("#evalCheckpoint").innerHTML = evalMarkup;
+  if ([...$("#evalCheckpoint").options].some((option) => option.value === previousEval)) {
+    $("#evalCheckpoint").value = previousEval;
+  }
+  syncEvaluationModelConfig();
+
+  const previousPretrained = $("#pretrainedCheckpoint").value;
+  $("#pretrainedCheckpoint").innerHTML = `<option value="">None</option>${evalMarkup}`;
+  if ([...$("#pretrainedCheckpoint").options].some((option) => option.value === previousPretrained)) {
+    $("#pretrainedCheckpoint").value = previousPretrained;
+  }
+}
+
+function syncEvaluationModelConfig() {
+  const checkpoint = state.checkpoints.find((item) => item.path === $("#evalCheckpoint").value);
+  if (!checkpoint?.model) return;
+  const form = $("#evaluationForm");
+  form.elements.image_width.value = checkpoint.model.image_width ?? 200;
+  form.elements.image_height.value = checkpoint.model.image_height ?? 66;
+  form.elements.output_dim.value = checkpoint.model.output_dim ?? 2;
+  form.elements.color_space.value = checkpoint.model.color_space ?? "yuv";
+}
+
+function renderEvaluationOptions() {
+  const select = $("#existingEvaluation");
+  const current = select.value;
+  select.innerHTML = optionMarkup(
+    state.evaluations,
+    (evaluation) => `${evaluation.name} · ${evaluation.split} · ${Number(evaluation.mean_mae || 0).toFixed(4)}`,
+    (evaluation) => evaluation.name,
+    "Evaluation がありません",
+  );
+  if ([...select.options].some((option) => option.value === current)) select.value = current;
+}
+
+function renderJob(job) {
+  state.job = job;
+  const running = job && ["queued", "running"].includes(job.status);
+  $("#jobTitle").textContent = job ? `${job.kind.toUpperCase()} · ${job.name}` : "No active job";
+  $("#jobDetail").textContent = job
+    ? `${job.status}${job.error ? ` · ${job.error}` : ""}`
+    : "Idle";
+  $("#jobDot").className = `status-dot ${job?.status || ""}`;
+  $("#jobProgress").style.width = `${Math.max(0, Math.min(1, job?.progress || 0)) * 100}%`;
+  $("#stopJobButton").disabled = !running;
+  $("#consoleTitle").textContent = job ? `${job.kind} / ${job.name}` : "Console";
+  $("#consoleOutput").textContent = job?.log?.length ? job.log.join("\n") : "No job output.";
+  const console = $("#consoleOutput");
+  if ($("#consoleDialog").open) console.scrollTop = console.scrollHeight;
+}
+
+async function pollJob() {
+  try {
+    const payload = await api("/api/job");
+    const previousStatus = state.job?.status;
+    renderJob(payload.job);
+    if (
+      payload.job
+      && previousStatus
+      && previousStatus !== payload.job.status
+      && ["succeeded", "failed", "cancelled"].includes(payload.job.status)
+    ) {
+      toast(
+        payload.job.status === "succeeded"
+          ? `${payload.job.name} が完了しました。`
+          : `${payload.job.name}: ${payload.job.status}`,
+        payload.job.status === "succeeded" ? "success" : "error",
+      );
+      await refreshState({ quiet: true });
+    }
+  } catch {
+    // The full refresh path reports connection failures.
+  }
+}
+
+async function postForm(path, payload) {
+  try {
+    const response = await api(path, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    renderJob(response.job);
+    toast(`${response.job.name} を開始しました。`);
+    $("#consoleDialog").showModal();
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+function numericPayload(payload, names) {
+  names.forEach((name) => {
+    payload[name] = Number(payload[name]);
+  });
+  return payload;
+}
+
+async function loadEvaluation(name) {
+  if (!name) {
+    toast("読み込む evaluation を選択してください。", "error");
+    return;
+  }
+  stopPlayback();
+  try {
+    const detail = await api(`/api/evaluations/${encodeURIComponent(name)}`);
+    state.evaluation = detail;
+    state.frameIndex = 0;
+    $("#frameSlider").max = Math.max(0, detail.summary.frame_count - 1);
+    $("#frameSlider").value = "0";
+    renderEvaluationSummary();
+    drawErrorChart();
+    await showFrame(0);
+    setView("evaluate");
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+function renderEvaluationSummary() {
+  const evaluation = state.evaluation;
+  $("#evaluationSummary").innerHTML = [
+    ["Frames", formatNumber(evaluation.summary.frame_count)],
+    ["Mean MAE", Number(evaluation.summary.mean_mae).toFixed(4)],
+    ["P95", Number(evaluation.summary.p95_mae).toFixed(4)],
+    ["Max", Number(evaluation.summary.max_mae).toFixed(4)],
+  ].map(([label, value]) => `
+    <span class="summary-pill">${label}<strong>${value}</strong></span>
+  `).join("");
+  $("#worstFrames").innerHTML = evaluation.worst.map((frame) => `
+    <button class="worst-frame" data-frame-index="${frame.index}">
+      <strong>MAE ${Number(frame.mae).toFixed(4)}</strong>
+      <span>Frame ${formatNumber(frame.index + 1)}</span>
+      <span title="${escapeHtml(frame.sequence)}">${escapeHtml(frame.sequence)}</span>
+    </button>
+  `).join("");
+  $$(".worst-frame").forEach((button) => {
+    button.addEventListener("click", () => showFrame(Number(button.dataset.frameIndex)));
+  });
+}
+
+async function showFrame(index) {
+  const evaluation = state.evaluation;
+  if (!evaluation?.summary.frame_count) return;
+  const clamped = Math.max(0, Math.min(evaluation.summary.frame_count - 1, Number(index)));
+  state.frameIndex = clamped;
+  $("#frameSlider").value = String(clamped);
+  const overlay = $("#overlayToggle").checked ? 1 : 0;
+  $("#evaluationFrame").src = `/api/evaluations/${encodeURIComponent(evaluation.name)}/frame.jpg?index=${clamped}&overlay=${overlay}&t=${Date.now()}`;
+  $("#evaluationFrame").hidden = false;
+  $("#viewerPlaceholder").hidden = true;
+  try {
+    const info = await api(
+      `/api/evaluations/${encodeURIComponent(evaluation.name)}/frame-info?index=${clamped}`,
+    );
+    if (state.frameIndex !== clamped) return;
+    $("#frameSequence").textContent = info.sequence;
+    $("#frameNumber").textContent = `Frame ${formatNumber(clamped + 1)} / ${formatNumber(evaluation.summary.frame_count)}`;
+    $("#frameMae").textContent = `MAE ${Number(info.mae).toFixed(4)}`;
+    $("#steerTarget").textContent = Number(info.target.steer).toFixed(4);
+    $("#steerPrediction").textContent = Number(info.prediction.steer).toFixed(4);
+    $("#accelTarget").textContent = info.target.acceleration == null
+      ? "—"
+      : Number(info.target.acceleration).toFixed(4);
+    $("#accelPrediction").textContent = info.prediction.acceleration == null
+      ? "—"
+      : Number(info.prediction.acceleration).toFixed(4);
+    drawErrorChart();
+  } catch (error) {
+    stopPlayback();
+    toast(error.message, "error");
+  }
+}
+
+function drawErrorChart() {
+  const canvas = $("#errorChart");
+  const context = canvas.getContext("2d");
+  const width = canvas.width;
+  const height = canvas.height;
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = "#0b1117";
+  context.fillRect(0, 0, width, height);
+  const series = state.evaluation?.series;
+  if (!series?.mae?.length) {
+    context.fillStyle = "#667485";
+    context.font = "13px system-ui";
+    context.fillText("No evaluation loaded", 18, 30);
+    return;
+  }
+  const maximum = Math.max(...series.mae, 0.0001);
+  context.strokeStyle = "#25323e";
+  context.lineWidth = 1;
+  for (let row = 1; row < 4; row += 1) {
+    const y = (height / 4) * row;
+    context.beginPath();
+    context.moveTo(0, y);
+    context.lineTo(width, y);
+    context.stroke();
+  }
+  const gradient = context.createLinearGradient(0, 0, width, 0);
+  gradient.addColorStop(0, "#6dd3ad");
+  gradient.addColorStop(1, "#ef7b82");
+  context.strokeStyle = gradient;
+  context.lineWidth = 2;
+  context.beginPath();
+  series.mae.forEach((value, index) => {
+    const x = (index / Math.max(1, series.mae.length - 1)) * width;
+    const y = height - (value / maximum) * (height - 12) - 6;
+    if (index === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  });
+  context.stroke();
+  const currentRatio = state.frameIndex / Math.max(1, state.evaluation.summary.frame_count - 1);
+  const currentX = currentRatio * width;
+  context.strokeStyle = "#f1f4f4";
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(currentX, 0);
+  context.lineTo(currentX, height);
+  context.stroke();
+}
+
+function stopPlayback() {
+  state.playing = false;
+  clearInterval(state.playTimer);
+  state.playTimer = null;
+  $("#playButton").textContent = "▶";
+  $("#playButton").title = "再生";
+}
+
+function togglePlayback() {
+  if (!state.evaluation) return;
+  if (state.playing) {
+    stopPlayback();
+    return;
+  }
+  state.playing = true;
+  $("#playButton").textContent = "Ⅱ";
+  $("#playButton").title = "停止";
+  const fps = Number($("#playbackSpeed").value);
+  state.playTimer = setInterval(() => {
+    const next = state.frameIndex + 1;
+    if (next >= state.evaluation.summary.frame_count) {
+      stopPlayback();
+      return;
+    }
+    showFrame(next);
+  }, 1000 / fps);
+}
+
+function bindEvents() {
+  $$(".tab").forEach((tab) => tab.addEventListener("click", () => setView(tab.dataset.view)));
+  $("#refreshButton").addEventListener("click", () => refreshState());
+  $("#sequenceFilter").addEventListener("input", renderSequences);
+
+  $("#extractForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const payload = numericPayload(formObject(event.currentTarget), [
+      "image_width",
+      "image_height",
+      "crop_top_ratio",
+      "workers",
+    ]);
+    payload.assignments = state.sequences.map((sequence) => ({
+      id: sequence.id,
+      split: state.assignments.get(sequence.id) || "unused",
+    }));
+    postForm("/api/extract", payload);
+  });
+
+  $("#trainForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const payload = numericPayload(formObject(event.currentTarget), [
+      "epochs",
+      "batch_size",
+      "num_workers",
+      "early_stop_patience",
+      "image_height",
+      "image_width",
+      "output_dim",
+      "lr",
+      "weight_decay",
+      "steer_weight",
+      "accel_weight",
+      "shift_range",
+      "steer_correction_per_pixel",
+    ]);
+    postForm("/api/train", payload);
+  });
+
+  $("#evaluationForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const payload = numericPayload(formObject(event.currentTarget), [
+      "image_width",
+      "image_height",
+      "output_dim",
+      "batch_size",
+    ]);
+    postForm("/api/evaluate", payload);
+  });
+
+  $("#loadEvaluationButton").addEventListener("click", () => loadEvaluation($("#existingEvaluation").value));
+  $("#evalCheckpoint").addEventListener("change", syncEvaluationModelConfig);
+  $("#previousButton").addEventListener("click", () => showFrame(state.frameIndex - 1));
+  $("#nextButton").addEventListener("click", () => showFrame(state.frameIndex + 1));
+  $("#playButton").addEventListener("click", togglePlayback);
+  $("#frameSlider").addEventListener("input", (event) => showFrame(Number(event.target.value)));
+  $("#overlayToggle").addEventListener("change", () => showFrame(state.frameIndex));
+  $("#playbackSpeed").addEventListener("change", () => {
+    if (state.playing) {
+      stopPlayback();
+      togglePlayback();
+    }
+  });
+
+  $("#consoleButton").addEventListener("click", () => $("#consoleDialog").showModal());
+  $("#closeConsoleButton").addEventListener("click", () => $("#consoleDialog").close());
+  $("#stopJobButton").addEventListener("click", async () => {
+    try {
+      const payload = await api("/api/job/cancel", { method: "POST", body: "{}" });
+      renderJob(payload.job);
+      toast("停止を要求しました。");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  });
+}
+
+function initializeDefaults() {
+  $("#datasetName").value = timestampName("e2e_dataset");
+  $("#runName").value = timestampName("pilotnet");
+  $("#evaluationName").value = timestampName("validation_review");
+}
+
+initializeDefaults();
+bindEvents();
+refreshState({ quiet: true });
+setInterval(pollJob, 1000);

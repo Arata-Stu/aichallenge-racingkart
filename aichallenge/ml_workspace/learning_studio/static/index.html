@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>E2E Learning Studio</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">E2E</div>
+        <div>
+          <strong>Learning Studio</strong>
+          <span id="connectionLabel">Connecting...</span>
+        </div>
+      </div>
+      <nav class="tabs" aria-label="Main navigation">
+        <button class="tab active" data-view="data">Data</button>
+        <button class="tab" data-view="train">Train</button>
+        <button class="tab" data-view="evaluate">Evaluate</button>
+      </nav>
+      <button class="button secondary" id="refreshButton">
+        <span class="button-icon">↻</span> Refresh
+      </button>
+    </header>
+
+    <main>
+      <section class="view active" id="view-data">
+        <div class="hero">
+          <div>
+            <p class="eyebrow">Dataset Builder</p>
+            <h1>走行 sequence を選び、<br>学習データへ変換する。</h1>
+            <p class="hero-copy">
+              ROS bag の metadata を読み込み、train / validation の役割を
+              sequence 単位で割り当てます。
+            </p>
+          </div>
+          <div class="path-chip" id="recordRoot">/aichallenge/record</div>
+        </div>
+
+        <div class="metrics four">
+          <article class="metric">
+            <span>Discovered bags</span>
+            <strong id="bagCount">0</strong>
+          </article>
+          <article class="metric mint">
+            <span>Train selected</span>
+            <strong id="trainCount">0</strong>
+          </article>
+          <article class="metric blue">
+            <span>Validation selected</span>
+            <strong id="valCount">0</strong>
+          </article>
+          <article class="metric coral">
+            <span>Total messages</span>
+            <strong id="messageCount">0</strong>
+          </article>
+        </div>
+
+        <div class="layout data-layout">
+          <section class="panel sequences-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Recorded sequences</h2>
+                <p>`metadata.yaml` を持つ ROS 2 bag directory を表示します。</p>
+              </div>
+              <label class="search-box">
+                <span>⌕</span>
+                <input id="sequenceFilter" type="search" placeholder="Path または topic で絞り込み">
+              </label>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Split</th>
+                    <th>Sequence</th>
+                    <th>Duration</th>
+                    <th>Messages</th>
+                    <th>Topics</th>
+                  </tr>
+                </thead>
+                <tbody id="sequenceRows"></tbody>
+              </table>
+              <div class="empty-state" id="sequenceEmpty" hidden>
+                <div class="empty-icon">◇</div>
+                <strong>ROS bag がまだ見つかりません</strong>
+                <span>record root と `metadata.yaml` を確認してください。</span>
+              </div>
+            </div>
+          </section>
+
+          <aside class="panel form-panel">
+            <div class="panel-header compact">
+              <div>
+                <h2>Extraction</h2>
+                <p>画像と同期 control label を dataset に保存します。</p>
+              </div>
+            </div>
+            <form id="extractForm" class="form-grid">
+              <label class="field full">
+                <span>Dataset name</span>
+                <input name="dataset_name" id="datasetName" required>
+              </label>
+              <label class="field full">
+                <span>Image topic</span>
+                <input name="image_topic" value="/sensing/camera/image_raw" required>
+              </label>
+              <label class="field full">
+                <span>Control topic</span>
+                <input name="control_topic" value="/control/command/control_cmd" required>
+              </label>
+              <label class="field">
+                <span>Image width</span>
+                <input name="image_width" type="number" value="200" min="16" required>
+              </label>
+              <label class="field">
+                <span>Image height</span>
+                <input name="image_height" type="number" value="66" min="16" required>
+              </label>
+              <label class="field">
+                <span>Crop top ratio</span>
+                <input name="crop_top_ratio" type="number" value="0.375" min="0" max="0.95" step="0.025" required>
+              </label>
+              <label class="field">
+                <span>Workers</span>
+                <input name="workers" type="number" value="4" min="1" max="32" required>
+              </label>
+              <div class="selection-summary full">
+                <span id="selectionSummary">sequence を選択してください</span>
+              </div>
+              <button class="button primary full" type="submit">Extract dataset</button>
+            </form>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="view-train">
+        <div class="hero">
+          <div>
+            <p class="eyebrow">Model Training</p>
+            <h1>設定を見渡しながら、<br>PilotNet を学習する。</h1>
+            <p class="hero-copy">
+              GUI の値は既存 `train.py` の Hydra override として渡されます。
+            </p>
+          </div>
+          <div class="path-chip">PilotNet / PyTorch</div>
+        </div>
+
+        <div class="layout train-layout">
+          <section class="panel form-panel wide-form">
+            <div class="panel-header compact">
+              <div>
+                <h2>Training configuration</h2>
+                <p>dataset、モデル入力、optimizer、augmentation を設定します。</p>
+              </div>
+            </div>
+            <form id="trainForm" class="form-grid training-grid">
+              <label class="field span-2">
+                <span>Dataset</span>
+                <select name="dataset_name" id="trainDataset" required></select>
+              </label>
+              <label class="field span-2">
+                <span>Run name</span>
+                <input name="run_name" id="runName" required>
+              </label>
+              <label class="field span-2">
+                <span>Pretrained checkpoint</span>
+                <select name="pretrained_path" id="pretrainedCheckpoint">
+                  <option value="">None</option>
+                </select>
+              </label>
+              <div class="form-section span-2">Optimization</div>
+              <label class="field">
+                <span>Epochs</span>
+                <input name="epochs" type="number" value="80" min="1" required>
+              </label>
+              <label class="field">
+                <span>Batch size</span>
+                <input name="batch_size" type="number" value="32" min="1" required>
+              </label>
+              <label class="field">
+                <span>Learning rate</span>
+                <input name="lr" type="number" value="0.0005" min="0.00000001" step="0.0001" required>
+              </label>
+              <label class="field">
+                <span>Weight decay</span>
+                <input name="weight_decay" type="number" value="0.0001" min="0" step="0.0001" required>
+              </label>
+              <label class="field">
+                <span>DataLoader workers</span>
+                <input name="num_workers" type="number" value="4" min="0" required>
+              </label>
+              <label class="field">
+                <span>Early stop patience</span>
+                <input name="early_stop_patience" type="number" value="20" min="1" required>
+              </label>
+              <div class="form-section span-2">Model & loss</div>
+              <label class="field">
+                <span>Image width</span>
+                <input name="image_width" type="number" value="200" min="16" required>
+              </label>
+              <label class="field">
+                <span>Image height</span>
+                <input name="image_height" type="number" value="66" min="16" required>
+              </label>
+              <label class="field">
+                <span>Color space</span>
+                <select name="color_space">
+                  <option value="yuv">YUV</option>
+                  <option value="rgb">RGB</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Output</span>
+                <select name="output_dim">
+                  <option value="2">Acceleration + steer</option>
+                  <option value="1">Steer only</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Loss</span>
+                <select name="loss_type">
+                  <option value="smooth_l1">Weighted Smooth L1</option>
+                  <option value="mse">MSE</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Steer weight</span>
+                <input name="steer_weight" type="number" value="1" min="0" step="0.1" required>
+              </label>
+              <label class="field">
+                <span>Acceleration weight</span>
+                <input name="accel_weight" type="number" value="1" min="0" step="0.1" required>
+              </label>
+              <label class="field">
+                <span>Shift range (px)</span>
+                <input name="shift_range" type="number" value="30" min="0" step="1" required>
+              </label>
+              <label class="field span-2">
+                <span>Steer correction / px</span>
+                <input name="steer_correction_per_pixel" type="number" value="0.004" min="0" step="0.001" required>
+              </label>
+              <button class="button primary span-2" type="submit">Start training</button>
+            </form>
+          </section>
+
+          <aside class="stack">
+            <section class="panel checkpoint-panel">
+              <div class="panel-header compact">
+                <div>
+                  <h2>Artifacts</h2>
+                  <p>学習済み checkpoint</p>
+                </div>
+                <span class="count-badge" id="checkpointCount">0</span>
+              </div>
+              <div id="checkpointList" class="artifact-list"></div>
+            </section>
+            <section class="panel guide-panel">
+              <p class="eyebrow">Training note</p>
+              <h3>まず steering の挙動を見る</h3>
+              <p>
+                acceleration が不安定な場合は Output を Steer only にするか、
+                acceleration weight を 0 にして比較できます。
+              </p>
+            </section>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="view-evaluate">
+        <div class="hero evaluate-hero">
+          <div>
+            <p class="eyebrow">Failure Analysis</p>
+            <h1>予測を再生し、次に集めるべき<br>scene を見つける。</h1>
+          </div>
+        </div>
+
+        <section class="panel evaluation-toolbar">
+          <form id="evaluationForm" class="evaluation-form">
+            <label class="field">
+              <span>Dataset</span>
+              <select name="dataset_name" id="evalDataset" required></select>
+            </label>
+            <label class="field small">
+              <span>Split</span>
+              <select name="split">
+                <option value="val">Validation</option>
+                <option value="train">Train</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Checkpoint</span>
+              <select name="checkpoint" id="evalCheckpoint" required></select>
+            </label>
+            <label class="field">
+              <span>Evaluation name</span>
+              <input name="evaluation_name" id="evaluationName" required>
+            </label>
+            <input name="image_width" type="hidden" value="200">
+            <input name="image_height" type="hidden" value="66">
+            <input name="output_dim" type="hidden" value="2">
+            <input name="color_space" type="hidden" value="yuv">
+            <input name="batch_size" type="hidden" value="128">
+            <button class="button primary" type="submit">Run evaluation</button>
+          </form>
+          <div class="load-existing">
+            <label class="field">
+              <span>Existing result</span>
+              <select id="existingEvaluation"></select>
+            </label>
+            <button class="button secondary" id="loadEvaluationButton">Load</button>
+          </div>
+        </section>
+
+        <div class="layout evaluation-layout">
+          <section class="panel viewer-panel">
+            <div class="viewer-meta">
+              <div>
+                <span class="live-dot"></span>
+                <strong id="frameSequence">Select or run an evaluation</strong>
+                <span id="frameNumber">Frame 0 / 0</span>
+              </div>
+              <span class="error-badge" id="frameMae">MAE 0.0000</span>
+            </div>
+            <div class="image-stage">
+              <img id="evaluationFrame" alt="Evaluation frame" hidden>
+              <div class="viewer-placeholder" id="viewerPlaceholder">
+                <div class="play-symbol">▶</div>
+                <strong>Evaluation result を読み込んでください</strong>
+                <span>各画像の target と prediction を重ねて確認できます。</span>
+              </div>
+            </div>
+            <div class="timeline">
+              <input id="frameSlider" type="range" min="0" max="0" value="0">
+              <div class="playback-controls">
+                <div class="control-group">
+                  <button class="icon-button" id="previousButton" title="前の frame">‹</button>
+                  <button class="play-button" id="playButton" title="再生">▶</button>
+                  <button class="icon-button" id="nextButton" title="次の frame">›</button>
+                </div>
+                <div class="control-group">
+                  <label class="speed-control">
+                    Speed
+                    <select id="playbackSpeed">
+                      <option value="2">2 fps</option>
+                      <option value="5" selected>5 fps</option>
+                      <option value="10">10 fps</option>
+                      <option value="20">20 fps</option>
+                    </select>
+                  </label>
+                  <label class="overlay-toggle">
+                    <input id="overlayToggle" type="checkbox" checked>
+                    <span>Overlay</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <aside class="stack evaluation-side">
+            <section class="panel output-panel">
+              <div class="panel-header compact">
+                <div>
+                  <h2>Frame output</h2>
+                  <p>現在時刻の教師値と予測値</p>
+                </div>
+              </div>
+              <div class="value-comparison">
+                <div class="value-row">
+                  <span>Steering</span>
+                  <strong id="steerTarget">0.0000</strong>
+                  <strong id="steerPrediction">0.0000</strong>
+                </div>
+                <div class="value-row">
+                  <span>Acceleration</span>
+                  <strong id="accelTarget">—</strong>
+                  <strong id="accelPrediction">—</strong>
+                </div>
+                <div class="value-legend">
+                  <span><i class="target"></i>Target</span>
+                  <span><i class="prediction"></i>Prediction</span>
+                </div>
+              </div>
+            </section>
+            <section class="panel chart-panel">
+              <div class="panel-header compact">
+                <div>
+                  <h2>Error timeline</h2>
+                  <p>sampled frame MAE</p>
+                </div>
+              </div>
+              <canvas id="errorChart" width="520" height="180"></canvas>
+            </section>
+          </aside>
+        </div>
+
+        <section class="panel worst-panel">
+          <div class="panel-header">
+            <div>
+              <h2>High-error scenes</h2>
+              <p>誤差が大きい frame から重点的に確認できます。</p>
+            </div>
+            <div class="summary-pills" id="evaluationSummary"></div>
+          </div>
+          <div class="worst-list" id="worstFrames">
+            <div class="empty-inline">Evaluation result はまだ読み込まれていません。</div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <section class="job-dock" id="jobDock">
+      <div class="job-status">
+        <span class="status-dot" id="jobDot"></span>
+        <div>
+          <strong id="jobTitle">No active job</strong>
+          <span id="jobDetail">Idle</span>
+        </div>
+      </div>
+      <div class="job-progress-track">
+        <span id="jobProgress"></span>
+      </div>
+      <div class="job-actions">
+        <button class="text-button" id="stopJobButton" disabled>Stop job</button>
+        <button class="text-button accent" id="consoleButton">Console</button>
+      </div>
+    </section>
+
+    <dialog id="consoleDialog">
+      <div class="dialog-header">
+        <div>
+          <p class="eyebrow">Job console</p>
+          <h2 id="consoleTitle">Console</h2>
+        </div>
+        <button class="icon-button" id="closeConsoleButton">×</button>
+      </div>
+      <pre id="consoleOutput">No job output.</pre>
+    </dialog>
+
+    <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>
