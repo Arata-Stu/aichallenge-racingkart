@@ -67,7 +67,7 @@ PilotNet の保存先としても利用できます。
    - dataset split と checkpoint を選択し、全 frame を推論します。
    - MAE の時系列と誤差上位 frame を表示します。
    - 再生、停止、前後移動、速度変更、target/prediction overlay を利用できます。
-   - PilotNet は `conv5` と steering 出力を使った Grad-CAM を frame 単位で表示できます。
+   - PilotNet は `conv4` と steering 出力を使った Grad-CAM を frame 単位で表示できます。
    - TinyLiDARNet の場合は scan をトップダウン表示します。
 
 ## Notes

@@ -1078,7 +1078,7 @@ def render_pilot_grad_cam(
                 lambda gradient: captured.__setitem__("gradient", gradient)
             )
 
-        hook = model.conv5.register_forward_hook(capture_activation)
+        hook = model.conv4.register_forward_hook(capture_activation)
         try:
             model.zero_grad(set_to_none=True)
             output = model(tensor)
@@ -1093,6 +1093,10 @@ def render_pilot_grad_cam(
             raise RuntimeError("Grad-CAM feature map could not be captured")
         weights = gradient.mean(dim=(2, 3), keepdim=True)
         cam = torch.relu((weights * activation).sum(dim=1))[0]
+        if float(cam.max() - cam.min()) <= 1e-8:
+            # Regression gradients can be entirely negative. Preserve a useful
+            # feature-importance view instead of returning an all-zero heatmap.
+            cam = torch.abs(gradient * activation).mean(dim=1)[0]
         cam = cam.detach().cpu().numpy()
 
     cam -= float(cam.min())
@@ -1108,8 +1112,10 @@ def render_pilot_grad_cam(
         np.uint8(np.clip(cam, 0.0, 1.0) * 255),
         cv2.COLORMAP_JET,
     )
-    original = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-    return cv2.addWeighted(original, 0.55, heatmap, 0.45, 0.0)
+    original = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR).astype(np.float32)
+    heatmap = heatmap.astype(np.float32)
+    alpha = (0.62 * np.clip(cam, 0.0, 1.0))[..., None]
+    return np.uint8(np.clip(original * (1.0 - alpha) + heatmap * alpha, 0, 255))
 
 
 def render_frame(
@@ -1214,7 +1220,7 @@ def render_frame(
         if grad_cam:
             cv2.putText(
                 bgr,
-                "Grad-CAM  conv5 / steering",
+                "Grad-CAM  conv4 / steering",
                 (max(18, width - 315), 40),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.58,

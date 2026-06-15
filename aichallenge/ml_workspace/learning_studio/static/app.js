@@ -320,7 +320,7 @@ function syncGradCamUi(modelType) {
   if (!supported) toggle.checked = false;
   $("#gradCamControl").classList.toggle("disabled", !supported);
   $("#gradCamControl").title = supported
-    ? "PilotNet steering output / conv5"
+    ? "PilotNet steering output / conv4"
     : "Grad-CAM is currently available for PilotNet only";
 }
 
