@@ -5,6 +5,7 @@ const state = {
   checkpoints: [],
   evaluations: [],
   assignments: new Map(),
+  collapsedGroups: new Set(),
   job: null,
   evaluation: null,
   frameIndex: 0,
@@ -113,51 +114,184 @@ function renderAll() {
   renderJob(state.job);
 }
 
+function sequenceSearchText(sequence) {
+  return [
+    sequence.name,
+    sequence.relative_path,
+    ...sequence.topics.map((topic) => `${topic.name} ${topic.type}`),
+  ].join(" ").toLowerCase();
+}
+
+function groupIdsForSequence(sequence) {
+  const segments = String(sequence.relative_path || sequence.name)
+    .split("/")
+    .filter(Boolean);
+  return segments.length > 1
+    ? segments.slice(0, -1).map((_, index) => segments.slice(0, index + 1).join("/"))
+    : [];
+}
+
+function allSequenceGroupIds(sequences = state.sequences) {
+  const ids = new Set();
+  sequences.forEach((sequence) => {
+    groupIdsForSequence(sequence).forEach((id) => ids.add(id));
+  });
+  return [...ids].sort();
+}
+
+function buildSequenceTree(sequences) {
+  const root = { children: new Map(), sequences: [], count: 0, messages: 0 };
+  sequences.forEach((sequence) => {
+    const segments = String(sequence.relative_path || sequence.name)
+      .split("/")
+      .filter(Boolean);
+    const groupSegments = segments.length > 1 ? segments.slice(0, -1) : [];
+    let node = root;
+    node.count += 1;
+    node.messages += Number(sequence.messages || 0);
+    groupSegments.forEach((segment, index) => {
+      const path = groupSegments.slice(0, index + 1).join("/");
+      if (!node.children.has(segment)) {
+        node.children.set(segment, {
+          name: segment,
+          path,
+          children: new Map(),
+          sequences: [],
+          count: 0,
+          messages: 0,
+        });
+      }
+      node = node.children.get(segment);
+      node.count += 1;
+      node.messages += Number(sequence.messages || 0);
+    });
+    node.sequences.push(sequence);
+  });
+  return root;
+}
+
+function splitOptions(selected, includeMixed = false) {
+  return `
+    ${includeMixed ? `<option value="" ${selected ? "" : "selected"}>Set split...</option>` : ""}
+    <option value="unused" ${selected === "unused" ? "selected" : ""}>Unused</option>
+    <option value="train" ${selected === "train" ? "selected" : ""}>Train</option>
+    <option value="val" ${selected === "val" ? "selected" : ""}>Validation</option>
+    <option value="both" ${selected === "both" ? "selected" : ""}>Both</option>
+  `;
+}
+
+function groupSplitValue(sequenceIds) {
+  const values = new Set(
+    sequenceIds.map((id) => state.assignments.get(id) || "unused"),
+  );
+  return values.size === 1 ? [...values][0] : "";
+}
+
+function renderSequenceRow(sequence, depth) {
+  const split = state.assignments.get(sequence.id) || "unused";
+  const topics = sequence.topics.slice(0, 3)
+    .map((topic) => `<span class="topic" title="${escapeHtml(topic.type)}">${escapeHtml(topic.name)}</span>`)
+    .join("");
+  const more = sequence.topics.length > 3
+    ? `<span class="topic more-topics">+${sequence.topics.length - 3} more</span>`
+    : "";
+  return `
+    <tr class="sequence-row">
+      <td>
+        <select class="split-select" data-sequence-id="${escapeHtml(sequence.id)}" data-split="${split}">
+          ${splitOptions(split)}
+        </select>
+      </td>
+      <td class="sequence-name">
+        <div class="sequence-leaf" style="--depth: ${depth}">
+          <strong title="${escapeHtml(sequence.relative_path)}">${escapeHtml(sequence.name)}</strong>
+          <span>${escapeHtml(sequence.relative_path)}</span>
+        </div>
+      </td>
+      <td>${escapeHtml(sequence.duration)}</td>
+      <td>${formatNumber(sequence.messages)}</td>
+      <td><div class="topic-stack">${topics}${more}</div></td>
+    </tr>
+  `;
+}
+
+function renderSequenceTreeRows(node, depth, rows, groupSequences) {
+  [...node.children.values()]
+    .sort((left, right) => left.name.localeCompare(right.name, "ja"))
+    .forEach((child) => {
+      const collapsed = state.collapsedGroups.has(child.path);
+      const sequenceIds = [];
+      const collectIds = (target) => {
+        target.sequences.forEach((sequence) => sequenceIds.push(sequence.id));
+        target.children.forEach(collectIds);
+      };
+      collectIds(child);
+      groupSequences.set(child.path, sequenceIds);
+      rows.push(`
+        <tr class="sequence-group-row">
+          <td colspan="5">
+            <div class="sequence-group" style="--depth: ${depth}">
+              <button
+                class="group-toggle"
+                data-group-id="${escapeHtml(child.path)}"
+                aria-expanded="${collapsed ? "false" : "true"}"
+                type="button"
+              >
+                <span class="group-chevron">${collapsed ? "▸" : "▾"}</span>
+                <span class="group-name">${escapeHtml(child.name)}</span>
+                <span class="group-path" title="${escapeHtml(child.path)}">${escapeHtml(child.path)}</span>
+                <span class="group-count">${formatNumber(child.count)} seq · ${formatNumber(child.messages)} msg</span>
+              </button>
+              <select class="group-split-select split-select" data-group-id="${escapeHtml(child.path)}" data-split="${groupSplitValue(sequenceIds)}">
+                ${splitOptions(groupSplitValue(sequenceIds), true)}
+              </select>
+            </div>
+          </td>
+        </tr>
+      `);
+      if (!collapsed) renderSequenceTreeRows(child, depth + 1, rows, groupSequences);
+    });
+
+  node.sequences
+    .sort((left, right) => left.relative_path.localeCompare(right.relative_path, "ja"))
+    .forEach((sequence) => rows.push(renderSequenceRow(sequence, depth)));
+}
+
 function renderSequences() {
   const query = $("#sequenceFilter").value.trim().toLowerCase();
-  const visible = state.sequences.filter((sequence) => {
-    const text = [
-      sequence.name,
-      sequence.relative_path,
-      ...sequence.topics.map((topic) => `${topic.name} ${topic.type}`),
-    ].join(" ").toLowerCase();
-    return !query || text.includes(query);
-  });
+  const visible = state.sequences.filter((sequence) => !query || sequenceSearchText(sequence).includes(query));
   $("#bagCount").textContent = formatNumber(state.sequences.length);
   $("#messageCount").textContent = formatNumber(
     state.sequences.reduce((sum, sequence) => sum + sequence.messages, 0),
   );
   $("#sequenceEmpty").hidden = visible.length > 0;
-  $("#sequenceRows").innerHTML = visible.map((sequence) => {
-    const split = state.assignments.get(sequence.id) || "unused";
-    const topics = sequence.topics.slice(0, 3)
-      .map((topic) => `<span class="topic" title="${escapeHtml(topic.type)}">${escapeHtml(topic.name)}</span>`)
-      .join("");
-    const more = sequence.topics.length > 3
-      ? `<span class="topic more-topics">+${sequence.topics.length - 3} more</span>`
-      : "";
-    return `
-      <tr>
-        <td>
-          <select class="split-select" data-sequence-id="${sequence.id}" data-split="${split}">
-            <option value="unused" ${split === "unused" ? "selected" : ""}>Unused</option>
-            <option value="train" ${split === "train" ? "selected" : ""}>Train</option>
-            <option value="val" ${split === "val" ? "selected" : ""}>Validation</option>
-            <option value="both" ${split === "both" ? "selected" : ""}>Both</option>
-          </select>
-        </td>
-        <td class="sequence-name">
-          <strong title="${escapeHtml(sequence.relative_path)}">${escapeHtml(sequence.name)}</strong>
-          <span>${escapeHtml(sequence.relative_path)}</span>
-        </td>
-        <td>${escapeHtml(sequence.duration)}</td>
-        <td>${formatNumber(sequence.messages)}</td>
-        <td><div class="topic-stack">${topics}${more}</div></td>
-      </tr>
-    `;
-  }).join("");
+  const rows = [];
+  const groupSequences = new Map();
+  renderSequenceTreeRows(buildSequenceTree(visible), 0, rows, groupSequences);
+  $("#sequenceRows").innerHTML = rows.join("");
+
+  $$(".group-toggle").forEach((button) => {
+    button.addEventListener("click", () => {
+      const groupId = button.dataset.groupId;
+      if (state.collapsedGroups.has(groupId)) state.collapsedGroups.delete(groupId);
+      else state.collapsedGroups.add(groupId);
+      renderSequences();
+    });
+  });
+
+  $$(".group-split-select").forEach((select) => {
+    select.addEventListener("click", (event) => event.stopPropagation());
+    select.addEventListener("change", () => {
+      if (!select.value) return;
+      (groupSequences.get(select.dataset.groupId) || []).forEach((sequenceId) => {
+        state.assignments.set(sequenceId, select.value);
+      });
+      renderSequences();
+    });
+  });
 
   $$(".split-select").forEach((select) => {
+    if (!select.dataset.sequenceId) return;
     select.addEventListener("change", () => {
       state.assignments.set(select.dataset.sequenceId, select.value);
       select.dataset.split = select.value;
@@ -544,6 +678,14 @@ function bindEvents() {
   $$(".tab").forEach((tab) => tab.addEventListener("click", () => setView(tab.dataset.view)));
   $("#refreshButton").addEventListener("click", () => refreshState());
   $("#sequenceFilter").addEventListener("input", renderSequences);
+  $("#expandSequenceGroups").addEventListener("click", () => {
+    state.collapsedGroups.clear();
+    renderSequences();
+  });
+  $("#collapseSequenceGroups").addEventListener("click", () => {
+    state.collapsedGroups = new Set(allSequenceGroupIds());
+    renderSequences();
+  });
   $("#extractModel").addEventListener("change", () => {
     syncModelUi("extract");
     const prefix = $("#extractModel").value === "tiny_lidar_net"

@@ -65,10 +65,16 @@
                 <h2>Recorded sequences</h2>
                 <p>`metadata.yaml` を持つ ROS 2 bag directory を表示します。</p>
               </div>
-              <label class="search-box">
-                <span>⌕</span>
-                <input id="sequenceFilter" type="search" placeholder="Path または topic で絞り込み">
-              </label>
+              <div class="sequence-toolbar">
+                <label class="search-box">
+                  <span>⌕</span>
+                  <input id="sequenceFilter" type="search" placeholder="Path または topic で絞り込み">
+                </label>
+                <div class="tree-actions" aria-label="Directory tree controls">
+                  <button class="mini-button" id="expandSequenceGroups" type="button">Expand</button>
+                  <button class="mini-button" id="collapseSequenceGroups" type="button">Collapse</button>
+                </div>
+              </div>
             </div>
             <div class="table-scroll">
               <table>

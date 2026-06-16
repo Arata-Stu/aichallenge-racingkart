@@ -333,6 +333,40 @@ main {
   font-size: 13px;
 }
 
+.sequence-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: min(520px, 100%);
+}
+
+.sequence-toolbar .search-box {
+  flex: 1;
+  width: auto;
+}
+
+.tree-actions {
+  display: flex;
+  gap: 7px;
+}
+
+.mini-button {
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  background: var(--bg-soft);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.mini-button:hover {
+  color: var(--text);
+  border-color: #344251;
+}
+
 .table-scroll {
   min-height: 440px;
   max-height: 640px;
@@ -365,8 +399,71 @@ td {
   font-size: 12px;
 }
 
+.sequence-group-row td {
+  padding: 0;
+  background: rgba(18, 26, 35, 0.84);
+}
+
+.sequence-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 18px 11px calc(18px + var(--depth) * 22px);
+  border-top: 1px solid var(--line-soft);
+}
+
+.group-toggle {
+  display: grid;
+  grid-template-columns: 18px minmax(120px, max-content) minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.group-chevron {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.group-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 850;
+}
+
+.group-path {
+  overflow: hidden;
+  color: var(--muted-2);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-count {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.group-split-select {
+  flex: 0 0 132px;
+}
+
 .sequence-name {
   max-width: 500px;
+}
+
+.sequence-leaf {
+  padding-left: calc(var(--depth) * 22px);
 }
 
 .sequence-name strong,
