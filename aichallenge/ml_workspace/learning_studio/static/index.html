@@ -18,6 +18,7 @@
       </div>
       <nav class="tabs" aria-label="Main navigation">
         <button class="tab active" data-view="data">Data</button>
+        <button class="tab" data-view="private-upload" data-private-upload hidden>Raw Export</button>
         <button class="tab" data-view="train">Train</button>
         <button class="tab" data-view="evaluate">Evaluate</button>
       </nav>
@@ -152,6 +153,132 @@
                 <span id="selectionSummary">sequence を選択してください</span>
               </div>
               <button class="button primary full" type="submit">Extract dataset</button>
+            </form>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="view-private-upload" data-private-upload hidden>
+        <div class="hero">
+          <div>
+            <p class="eyebrow">Raw Image Upload</p>
+            <h1>Raw Export</h1>
+            <p class="hero-copy">
+              Export raw simulator images from ROS bags and upload them for annotation.
+            </p>
+          </div>
+          <div class="path-chip" id="privateUploadRoot">/aichallenge/ml_workspace/.private_upload_exports</div>
+        </div>
+
+        <div class="layout data-layout">
+          <section class="panel sequences-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Raw image sequences</h2>
+                <p>crop / resize / cleansing は行わず、生画像を保存または upload します。</p>
+              </div>
+              <div class="sequence-toolbar">
+                <label class="search-box">
+                  <span>⌕</span>
+                  <input id="privateUploadSequenceFilter" type="search" placeholder="Path または topic で絞り込み">
+                </label>
+                <div class="tree-actions" aria-label="Raw export directory tree controls">
+                  <button class="mini-button" id="expandPrivateUploadGroups" type="button">Expand</button>
+                  <button class="mini-button" id="collapsePrivateUploadGroups" type="button">Collapse</button>
+                </div>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Action</th>
+                    <th>Sequence</th>
+                    <th>Duration</th>
+                    <th>Messages</th>
+                    <th>Topics</th>
+                  </tr>
+                </thead>
+                <tbody id="privateUploadSequenceRows"></tbody>
+              </table>
+              <div class="empty-state" id="privateUploadSequenceEmpty" hidden>
+                <div class="empty-icon">◇</div>
+                <strong>ROS bag がまだ見つかりません</strong>
+                <span>record root と `metadata.yaml` を確認してください。</span>
+              </div>
+            </div>
+          </section>
+
+          <aside class="panel form-panel">
+            <div class="panel-header compact">
+              <div>
+                <h2>Remote upload</h2>
+                <p id="privateUploadApiStatus">PRIVATE_UPLOAD_API_KEY status unknown</p>
+              </div>
+            </div>
+            <form id="privateUploadForm" class="form-grid">
+              <label class="field full">
+                <span>Mode</span>
+                <select name="mode">
+                  <option value="export_only">Export only</option>
+                  <option value="export_upload">Export + upload</option>
+                </select>
+              </label>
+              <label class="field full">
+                <span>Export name</span>
+                <input name="export_name" id="privateUploadExportName" required>
+              </label>
+              <label class="field full">
+                <span>Image topic</span>
+                <input name="image_topic" value="/sensing/camera/image_raw" required>
+              </label>
+              <label class="field full">
+                <span>Remote project ID</span>
+                <input name="project_id" placeholder="remote project slug">
+              </label>
+              <label class="field full">
+                <span>Batch name</span>
+                <input name="batch_name" id="privateUploadBatchName">
+              </label>
+              <label class="field">
+                <span>Split</span>
+                <select name="split">
+                  <option value="train">train</option>
+                  <option value="valid">valid</option>
+                  <option value="test">test</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Format</span>
+                <select name="format">
+                  <option value="jpg">jpg</option>
+                  <option value="png">png</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Frame stride</span>
+                <input name="frame_stride" type="number" value="1" min="1" required>
+              </label>
+              <label class="field">
+                <span>Max frames / sequence</span>
+                <input name="max_frames_per_sequence" type="number" value="0" min="0" required>
+              </label>
+              <label class="field">
+                <span>JPEG quality</span>
+                <input name="jpeg_quality" type="number" value="95" min="1" max="100" required>
+              </label>
+              <label class="field">
+                <span>Upload retries</span>
+                <input name="upload_retries" type="number" value="2" min="0" max="10" required>
+              </label>
+              <label class="field full">
+                <span>Tags</span>
+                <input name="tags" placeholder="sim, rainy, version_01">
+              </label>
+              <div class="selection-summary full">
+                <span id="privateUploadSelectionSummary">upload 対象の sequence を選択してください</span>
+              </div>
+              <button class="button primary full" type="submit">Export / Upload raw images</button>
             </form>
           </aside>
         </div>

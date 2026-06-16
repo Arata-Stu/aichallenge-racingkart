@@ -509,6 +509,12 @@ td {
   border-color: #716330;
 }
 
+.private-upload-action-select[data-action="upload"],
+.private-upload-group-action-select[data-action="upload"] {
+  color: var(--mint);
+  border-color: #316655;
+}
+
 .topic-stack {
   max-width: 230px;
 }

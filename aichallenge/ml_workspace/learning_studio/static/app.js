@@ -6,6 +6,8 @@ const state = {
   evaluations: [],
   assignments: new Map(),
   collapsedGroups: new Set(),
+  privateUploadSelections: new Map(),
+  collapsedPrivateUploadGroups: new Set(),
   job: null,
   evaluation: null,
   frameIndex: 0,
@@ -104,7 +106,23 @@ async function refreshState({ quiet = false } = {}) {
 function renderAll() {
   $("#connectionLabel").textContent = `Connected on ${state.config.python || "python"}`;
   $("#recordRoot").textContent = state.config.record_root || "/aichallenge/record";
+  const privateUploadEnabled = Boolean(state.config.private_upload_enabled);
+  $$("[data-private-upload]").forEach((element) => {
+    element.hidden = !privateUploadEnabled;
+  });
+  if (!privateUploadEnabled && $("#view-private-upload").classList.contains("active")) {
+    setView("data");
+  }
+  $("#privateUploadRoot").textContent = state.config.private_upload_export_root || "/aichallenge/ml_workspace/.private_upload_exports";
+  $("#privateUploadApiStatus").textContent = state.config.private_upload_key_configured
+    ? "PRIVATE_UPLOAD_API_KEY is set"
+    : "PRIVATE_UPLOAD_API_KEY is not set";
   renderSequences();
+  if (privateUploadEnabled) {
+    renderPrivateUploadSequences();
+  } else {
+    $("#privateUploadSequenceRows").innerHTML = "";
+  }
   renderDatasetOptions();
   renderCheckpoints();
   renderEvaluationOptions();
@@ -299,6 +317,145 @@ function renderSequences() {
     });
   });
   renderSelectionMetrics();
+}
+
+function privateUploadActionOptions(selected) {
+  return `
+    <option value="skip" ${selected === "skip" ? "selected" : ""}>Skip</option>
+    <option value="upload" ${selected === "upload" ? "selected" : ""}>Upload</option>
+  `;
+}
+
+function privateUploadGroupActionValue(sequenceIds) {
+  const values = new Set(
+    sequenceIds.map((id) => state.privateUploadSelections.get(id) || "skip"),
+  );
+  return values.size === 1 ? [...values][0] : "";
+}
+
+function renderPrivateUploadSequenceRow(sequence, depth) {
+  const action = state.privateUploadSelections.get(sequence.id) || "skip";
+  const topics = sequence.topics.slice(0, 3)
+    .map((topic) => `<span class="topic" title="${escapeHtml(topic.type)}">${escapeHtml(topic.name)}</span>`)
+    .join("");
+  const more = sequence.topics.length > 3
+    ? `<span class="topic more-topics">+${sequence.topics.length - 3} more</span>`
+    : "";
+  return `
+    <tr class="sequence-row">
+      <td>
+        <select class="private-upload-action-select split-select" data-sequence-id="${escapeHtml(sequence.id)}" data-action="${action}">
+          ${privateUploadActionOptions(action)}
+        </select>
+      </td>
+      <td class="sequence-name">
+        <div class="sequence-leaf" style="--depth: ${depth}">
+          <strong title="${escapeHtml(sequence.relative_path)}">${escapeHtml(sequence.name)}</strong>
+          <span>${escapeHtml(sequence.relative_path)}</span>
+        </div>
+      </td>
+      <td>${escapeHtml(sequence.duration)}</td>
+      <td>${formatNumber(sequence.messages)}</td>
+      <td><div class="topic-stack">${topics}${more}</div></td>
+    </tr>
+  `;
+}
+
+function renderPrivateUploadTreeRows(node, depth, rows, groupSequences) {
+  [...node.children.values()]
+    .sort((left, right) => left.name.localeCompare(right.name, "ja"))
+    .forEach((child) => {
+      const collapsed = state.collapsedPrivateUploadGroups.has(child.path);
+      const sequenceIds = [];
+      const collectIds = (target) => {
+        target.sequences.forEach((sequence) => sequenceIds.push(sequence.id));
+        target.children.forEach(collectIds);
+      };
+      collectIds(child);
+      groupSequences.set(child.path, sequenceIds);
+      const action = privateUploadGroupActionValue(sequenceIds);
+      rows.push(`
+        <tr class="sequence-group-row">
+          <td colspan="5">
+            <div class="sequence-group" style="--depth: ${depth}">
+              <button
+                class="private-upload-group-toggle group-toggle"
+                data-group-id="${escapeHtml(child.path)}"
+                aria-expanded="${collapsed ? "false" : "true"}"
+                type="button"
+              >
+                <span class="group-chevron">${collapsed ? "▸" : "▾"}</span>
+                <span class="group-name">${escapeHtml(child.name)}</span>
+                <span class="group-path" title="${escapeHtml(child.path)}">${escapeHtml(child.path)}</span>
+                <span class="group-count">${formatNumber(child.count)} seq · ${formatNumber(child.messages)} msg</span>
+              </button>
+              <select class="private-upload-group-action-select split-select" data-group-id="${escapeHtml(child.path)}" data-action="${action}">
+                <option value="" ${action ? "" : "selected"}>Set...</option>
+                ${privateUploadActionOptions(action)}
+              </select>
+            </div>
+          </td>
+        </tr>
+      `);
+      if (!collapsed) renderPrivateUploadTreeRows(child, depth + 1, rows, groupSequences);
+    });
+
+  node.sequences
+    .sort((left, right) => left.relative_path.localeCompare(right.relative_path, "ja"))
+    .forEach((sequence) => rows.push(renderPrivateUploadSequenceRow(sequence, depth)));
+}
+
+function renderPrivateUploadSequences() {
+  const filter = $("#privateUploadSequenceFilter");
+  if (!filter) return;
+  const query = filter.value.trim().toLowerCase();
+  const visible = state.sequences.filter((sequence) => !query || sequenceSearchText(sequence).includes(query));
+  $("#privateUploadSequenceEmpty").hidden = visible.length > 0;
+  const rows = [];
+  const groupSequences = new Map();
+  renderPrivateUploadTreeRows(buildSequenceTree(visible), 0, rows, groupSequences);
+  $("#privateUploadSequenceRows").innerHTML = rows.join("");
+
+  $$(".private-upload-group-toggle").forEach((button) => {
+    button.addEventListener("click", () => {
+      const groupId = button.dataset.groupId;
+      if (state.collapsedPrivateUploadGroups.has(groupId)) {
+        state.collapsedPrivateUploadGroups.delete(groupId);
+      } else {
+        state.collapsedPrivateUploadGroups.add(groupId);
+      }
+      renderPrivateUploadSequences();
+    });
+  });
+
+  $$(".private-upload-group-action-select").forEach((select) => {
+    select.addEventListener("click", (event) => event.stopPropagation());
+    select.addEventListener("change", () => {
+      if (!select.value) return;
+      (groupSequences.get(select.dataset.groupId) || []).forEach((sequenceId) => {
+        state.privateUploadSelections.set(sequenceId, select.value);
+      });
+      renderPrivateUploadSequences();
+    });
+  });
+
+  $$(".private-upload-action-select").forEach((select) => {
+    select.addEventListener("change", () => {
+      state.privateUploadSelections.set(select.dataset.sequenceId, select.value);
+      select.dataset.action = select.value;
+      renderPrivateUploadSelectionMetrics();
+    });
+  });
+  renderPrivateUploadSelectionMetrics();
+}
+
+function renderPrivateUploadSelectionMetrics() {
+  const selected = state.sequences.filter(
+    (sequence) => (state.privateUploadSelections.get(sequence.id) || "skip") === "upload",
+  ).length;
+  $("#privateUploadSelectionSummary").textContent = selected
+    ? `${formatNumber(selected)} sequence を raw image export 対象にします。`
+    : "upload 対象の sequence を選択してください";
 }
 
 function renderSelectionMetrics() {
@@ -678,6 +835,7 @@ function bindEvents() {
   $$(".tab").forEach((tab) => tab.addEventListener("click", () => setView(tab.dataset.view)));
   $("#refreshButton").addEventListener("click", () => refreshState());
   $("#sequenceFilter").addEventListener("input", renderSequences);
+  $("#privateUploadSequenceFilter").addEventListener("input", renderPrivateUploadSequences);
   $("#expandSequenceGroups").addEventListener("click", () => {
     state.collapsedGroups.clear();
     renderSequences();
@@ -685,6 +843,14 @@ function bindEvents() {
   $("#collapseSequenceGroups").addEventListener("click", () => {
     state.collapsedGroups = new Set(allSequenceGroupIds());
     renderSequences();
+  });
+  $("#expandPrivateUploadGroups").addEventListener("click", () => {
+    state.collapsedPrivateUploadGroups.clear();
+    renderPrivateUploadSequences();
+  });
+  $("#collapsePrivateUploadGroups").addEventListener("click", () => {
+    state.collapsedPrivateUploadGroups = new Set(allSequenceGroupIds());
+    renderPrivateUploadSequences();
   });
   $("#extractModel").addEventListener("change", () => {
     syncModelUi("extract");
@@ -723,6 +889,22 @@ function bindEvents() {
       split: state.assignments.get(sequence.id) || "unused",
     }));
     postForm("/api/extract", payload);
+  });
+
+  $("#privateUploadForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const payload = formObject(event.currentTarget);
+    numericPayload(payload, [
+      "frame_stride",
+      "max_frames_per_sequence",
+      "jpeg_quality",
+      "upload_retries",
+    ]);
+    payload.assignments = state.sequences.map((sequence) => ({
+      id: sequence.id,
+      action: state.privateUploadSelections.get(sequence.id) || "skip",
+    }));
+    postForm("/api/private-upload/export", payload);
   });
 
   $("#trainForm").addEventListener("submit", (event) => {
@@ -818,6 +1000,8 @@ function initializeDefaults() {
   $("#datasetName").value = timestampName("pilotnet_dataset");
   $("#runName").value = timestampName("pilotnet");
   $("#evaluationName").value = timestampName("validation_review");
+  $("#privateUploadExportName").value = timestampName("raw_export");
+  $("#privateUploadBatchName").value = timestampName("sim_raw");
   syncModelUi("extract");
   syncModelUi("train");
   syncModelUi("eval");

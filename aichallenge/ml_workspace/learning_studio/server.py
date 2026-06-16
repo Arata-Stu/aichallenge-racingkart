@@ -38,7 +38,20 @@ def env_path(name: str, default: Path) -> Path:
     return Path(os.environ.get(name, str(default))).expanduser().resolve()
 
 
+def env_flag(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
 RECORD_ROOT = env_path("E2E_RECORD_ROOT", Path("/aichallenge/record"))
+PRIVATE_UPLOAD_ENABLED = env_flag("E2E_ENABLE_PRIVATE_UPLOAD")
+PRIVATE_UPLOAD_API_KEY_ENV = "PRIVATE_UPLOAD_API_KEY"
+PRIVATE_UPLOAD_EXPORT_ROOT = env_path(
+    "E2E_PRIVATE_UPLOAD_EXPORT_ROOT",
+    ML_ROOT / ".private_upload_exports",
+)
 MODEL_SPECS = {
     "pilot_net": {
         "id": "pilot_net",
@@ -647,6 +660,128 @@ def start_extraction(payload: dict[str, Any]) -> Job:
         job.append(f"[DONE] Dataset created: {dataset_dir}")
 
     return JOBS.start("extract", dataset_name, task)
+
+
+def comma_list(value: Any) -> list[str]:
+    return [
+        item.strip()
+        for item in str(value or "").split(",")
+        if item.strip()
+    ]
+
+
+def start_private_upload_export(payload: dict[str, Any]) -> Job:
+    if not PRIVATE_UPLOAD_ENABLED:
+        raise FileNotFoundError("Not found")
+    export_name = safe_slug(payload.get("export_name"), "export_name")
+    output_dir = (PRIVATE_UPLOAD_EXPORT_ROOT / export_name).resolve()
+    if output_dir.exists():
+        raise ValueError(
+            f"raw export '{export_name}' は既に存在します。別名を指定してください。"
+        )
+
+    assignments = payload.get("assignments", [])
+    selected: list[dict[str, Any]] = []
+    for assignment in assignments:
+        sequence = SEQUENCE_CACHE.get(str(assignment.get("id")))
+        if sequence and str(assignment.get("action", "skip")) == "upload":
+            selected.append(sequence)
+    if not selected:
+        raise ValueError("upload 対象の sequence がありません。")
+
+    image_topic = str(
+        payload.get("image_topic", "/sensing/camera/image_raw")
+    ).strip()
+    if not image_topic.startswith("/"):
+        raise ValueError("image topic は '/' から始めてください。")
+
+    mode = str(payload.get("mode", "export_only"))
+    if mode not in {"export_only", "export_upload"}:
+        raise ValueError("mode must be export_only or export_upload")
+    project_id = str(payload.get("project_id", "")).strip()
+    if mode == "export_upload" and not project_id:
+        raise ValueError("remote upload には project ID が必要です。")
+    split = str(payload.get("split", "train"))
+    if split not in {"train", "valid", "test"}:
+        raise ValueError("split must be train, valid, or test")
+    frame_stride = as_int(payload, "frame_stride", 1, 100000)
+    max_frames = as_int(payload, "max_frames_per_sequence", 0, 10_000_000)
+    jpeg_quality = as_int(payload, "jpeg_quality", 1, 100)
+    image_format = str(payload.get("format", "jpg"))
+    if image_format not in {"jpg", "png"}:
+        raise ValueError("format must be jpg or png")
+    upload_retries = as_int(payload, "upload_retries", 0, 10)
+    batch_name = str(payload.get("batch_name", export_name)).strip() or export_name
+    tags = comma_list(payload.get("tags"))
+    manifest = {
+        "name": export_name,
+        "created_at": utc_now(),
+        "record_root": str(RECORD_ROOT),
+        "image_topic": image_topic,
+        "mode": mode,
+        "project_id": project_id,
+        "split": split,
+        "batch_name": batch_name,
+        "tags": tags,
+        "frame_stride": frame_stride,
+        "max_frames_per_sequence": max_frames,
+        "format": image_format,
+        "jpeg_quality": jpeg_quality,
+        "assignments": [
+            {
+                "id": sequence["id"],
+                "path": sequence["path"],
+                "relative_path": sequence["relative_path"],
+                "action": "upload",
+            }
+            for sequence in selected
+        ],
+    }
+
+    def task(job: Job) -> None:
+        output_dir.mkdir(parents=True)
+        (output_dir / "request.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        command = [
+            sys.executable,
+            "-u",
+            str(APP_DIR / "private_upload_images.py"),
+            "--seq-dirs",
+            *[sequence["path"] for sequence in selected],
+            "--outdir",
+            str(output_dir / "images"),
+            "--manifest",
+            str(output_dir / "manifest.json"),
+            "--image-topic",
+            image_topic,
+            "--frame-stride",
+            str(frame_stride),
+            "--max-frames-per-sequence",
+            str(max_frames),
+            "--format",
+            image_format,
+            "--jpeg-quality",
+            str(jpeg_quality),
+            "--split",
+            split,
+            "--batch-name",
+            batch_name,
+            "--upload-retries",
+            str(upload_retries),
+            "--api-key-env",
+            PRIVATE_UPLOAD_API_KEY_ENV,
+        ]
+        for tag in tags:
+            command.extend(["--tag", tag])
+        if mode == "export_upload":
+            command.extend(["--upload", "--project-id", project_id])
+        job.run_command(command, APP_DIR)
+        job.progress = 1.0
+        job.append(f"[DONE] Raw export ready: {output_dir}")
+
+    return JOBS.start("raw-export", export_name, task)
 
 
 def start_training(payload: dict[str, Any]) -> Job:
@@ -1267,6 +1402,13 @@ def app_state() -> dict[str, Any]:
         "config": {
             "record_root": str(RECORD_ROOT),
             "record_root_exists": RECORD_ROOT.exists(),
+            "private_upload_enabled": PRIVATE_UPLOAD_ENABLED,
+            "private_upload_export_root": (
+                str(PRIVATE_UPLOAD_EXPORT_ROOT) if PRIVATE_UPLOAD_ENABLED else ""
+            ),
+            "private_upload_key_configured": bool(
+                os.environ.get(PRIVATE_UPLOAD_API_KEY_ENV, "").strip()
+            ),
             "python": sys.executable,
             "models": [
                 {
@@ -1363,6 +1505,12 @@ class StudioHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/extract":
                 self.send_json({"job": start_extraction(payload).snapshot()}, 202)
                 return
+            if parsed.path == "/api/private-upload/export":
+                self.send_json(
+                    {"job": start_private_upload_export(payload).snapshot()},
+                    202,
+                )
+                return
             if parsed.path == "/api/train":
                 self.send_json({"job": start_training(payload).snapshot()}, 202)
                 return
@@ -1412,6 +1560,8 @@ def main() -> None:
         spec["datasets_root"].mkdir(parents=True, exist_ok=True)
         runs_root(spec).mkdir(parents=True, exist_ok=True)
         evaluations_root(spec).mkdir(parents=True, exist_ok=True)
+    if PRIVATE_UPLOAD_ENABLED:
+        PRIVATE_UPLOAD_EXPORT_ROOT.mkdir(parents=True, exist_ok=True)
     refresh_sequence_cache()
 
     server = ThreadingHTTPServer((args.host, args.port), StudioHandler)
