@@ -1,0 +1,119 @@
+rsu_laserscan_generator_node:
+  ros__parameters:
+    use_sim_time: true
+    csv_path: /path/to/lane.csv
+    map_frame_id: map
+    default_fov_deg: 70.0
+    default_max_range: 45.0
+    default_range_min: 0.05
+    default_timer_hz: 20.0
+    default_num_rays: 361
+    default_hit_rank: 2
+    debug: true
+
+    # If rsu_ids is empty, rsu_count auto-generates curve_01 ... curve_N.
+    # Explicit rsu_ids takes priority and allows arbitrary names.
+    rsu_count: 6
+    rsu_id_prefix: curve_
+
+    # Place RSUs on the inside of corners. x/y are map-frame coordinates
+    # matching lane.csv, not offset-local coordinates.
+    rsu_ids:
+      - curve_01
+      - curve_02
+      - curve_03
+      - curve_04
+      - curve_05
+      - curve_06
+
+    rsus:
+      curve_01:
+        frame_id: rsu_curve_01_laser
+        topic: /rsu/curve_01/scan
+        x: 89640.0
+        y: 43120.0
+        z: 6.5
+        yaw_deg: 0.0
+        fov_deg: 70.0
+        max_range: 45.0
+        range_min: 0.05
+        num_rays: 361
+        hit_rank: 2
+        target_boundary: any
+        target_lanelet_ids: []
+        target_way_ids: []
+      curve_02:
+        frame_id: rsu_curve_02_laser
+        topic: /rsu/curve_02/scan
+        x: 89620.0
+        y: 43150.0
+        z: 6.5
+        yaw_deg: 0.0
+        fov_deg: 70.0
+        max_range: 45.0
+        range_min: 0.05
+        num_rays: 361
+        hit_rank: 2
+        target_boundary: any
+        target_lanelet_ids: []
+        target_way_ids: []
+      curve_03:
+        frame_id: rsu_curve_03_laser
+        topic: /rsu/curve_03/scan
+        x: 89590.0
+        y: 43170.0
+        z: 6.5
+        yaw_deg: 0.0
+        fov_deg: 70.0
+        max_range: 45.0
+        range_min: 0.05
+        num_rays: 361
+        hit_rank: 2
+        target_boundary: any
+        target_lanelet_ids: []
+        target_way_ids: []
+      curve_04:
+        frame_id: rsu_curve_04_laser
+        topic: /rsu/curve_04/scan
+        x: 89570.0
+        y: 43140.0
+        z: 6.5
+        yaw_deg: 0.0
+        fov_deg: 70.0
+        max_range: 45.0
+        range_min: 0.05
+        num_rays: 361
+        hit_rank: 2
+        target_boundary: any
+        target_lanelet_ids: []
+        target_way_ids: []
+      curve_05:
+        frame_id: rsu_curve_05_laser
+        topic: /rsu/curve_05/scan
+        x: 89540.0
+        y: 43110.0
+        z: 6.5
+        yaw_deg: 0.0
+        fov_deg: 70.0
+        max_range: 45.0
+        range_min: 0.05
+        num_rays: 361
+        hit_rank: 2
+        target_boundary: any
+        target_lanelet_ids: []
+        target_way_ids: []
+      curve_06:
+        frame_id: rsu_curve_06_laser
+        topic: /rsu/curve_06/scan
+        x: 89510.0
+        y: 43090.0
+        z: 6.5
+        yaw_deg: 0.0
+        fov_deg: 70.0
+        max_range: 45.0
+        range_min: 0.05
+        num_rays: 361
+        hit_rank: 2
+        target_boundary: any
+        target_lanelet_ids: []
+        target_way_ids: []

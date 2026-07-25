@@ -1,0 +1,27 @@
+data:
+  train_dir: ./datasets/train
+  val_dir: ./datasets/val
+  history_len: 5
+  max_range: 45.0
+
+model:
+  scan_dim: 1080
+  rsu_count: 6
+  rsu_meta_dim: 5
+  vehicle_state_dim: 0
+  output_dim: 2
+  frame_feature_dim: 128
+  temporal_hidden_dim: 128
+  fusion_hidden_dim: 128
+  distance_decay_m: 35.0
+  top_k_rsus: 2
+
+train:
+  batch_size: 64
+  num_workers: 4
+  epochs: 80
+  lr: 0.0003
+  weight_decay: 0.00001
+  early_stop_patience: 12
+  save_dir: ./checkpoints
+  log_dir: ./logs

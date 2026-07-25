@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RSU LiDAR Layout Editor</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --text: #1f2933;
+      --muted: #667085;
+      --line: #d7dde6;
+      --accent: #147a73;
+      --warn: #b8325f;
+      --field: #fbfcfe;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12161b;
+        --panel: #1d232b;
+        --text: #eef2f6;
+        --muted: #aab3bf;
+        --line: #343d48;
+        --field: #151a20;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+    main {
+      width: min(1320px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 22px 0 36px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: end;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    h1, h2 { margin: 0; letter-spacing: 0; }
+    h1 { font-size: 26px; }
+    h2 { font-size: 16px; margin-bottom: 10px; }
+    button, .file-label, input, select, textarea {
+      font: inherit;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      min-height: 38px;
+    }
+    button, .file-label {
+      background: var(--panel);
+      color: var(--text);
+      padding: 8px 11px;
+      cursor: pointer;
+    }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    input, select, textarea {
+      width: 100%;
+      background: var(--field);
+      color: var(--text);
+      padding: 7px 9px;
+    }
+    textarea {
+      min-height: 360px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      resize: vertical;
+    }
+    .muted { color: var(--muted); }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin: 16px 0;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.9fr);
+      gap: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      min-width: 0;
+    }
+    canvas {
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      display: block;
+      background: #111820;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      cursor: crosshair;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .list {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .rsu-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .rsu-row.active {
+      border-color: var(--accent);
+      box-shadow: inset 0 0 0 1px var(--accent);
+    }
+    .hint {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 10px;
+    }
+    @media (max-width: 920px) {
+      header, .layout { display: block; }
+      .panel { margin-bottom: 14px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>RSU LiDAR Layout Editor</h1>
+      <div class="muted">lane.csv を読み込み、RSU の位置・向き・FOV・hit rank を調整して ROS parameter YAML を生成します。</div>
+    </div>
+    <div class="muted" id="summary">No lane CSV loaded</div>
+  </header>
+
+  <div class="toolbar">
+    <label class="file-label">Load lane.csv<input id="csvInput" type="file" accept=".csv,text/csv" hidden></label>
+    <button id="resetView">Fit View</button>
+    <label class="muted">RSU count <input id="rsuCount" type="number" min="1" max="64" value="6" style="width:84px"></label>
+    <button id="applyCount">Apply Count</button>
+    <button id="addRsu">Add RSU</button>
+    <button id="generate" class="primary">Generate YAML</button>
+  </div>
+
+  <div class="layout">
+    <section class="panel">
+      <canvas id="mapCanvas" width="1280" height="800"></canvas>
+      <div class="hint">ドラッグで RSU を移動。右側フォームで yaw/FOV/hit_rank を調整します。CSV の local_x/local_y 座標をそのまま使います。</div>
+    </section>
+
+    <aside class="panel">
+      <h2>RSUs</h2>
+      <div class="list" id="rsuList"></div>
+      <div class="grid" id="editor"></div>
+      <h2 style="margin-top:16px">Output YAML</h2>
+      <textarea id="yamlOutput" spellcheck="false"></textarea>
+    </aside>
+  </div>
+</main>
+
+<script>
+const state = {
+  points: [],
+  bounds: null,
+  selected: 0,
+  dragging: false,
+  rsus: Array.from({length: 6}, (_, i) => ({
+    id: `curve_${String(i + 1).padStart(2, "0")}`,
+    x: 0,
+    y: 0,
+    z: 6.5,
+    yaw_deg: 0,
+    fov_deg: 70,
+    max_range: 45,
+    range_min: 0.05,
+    num_rays: 361,
+    hit_rank: 2,
+    target_boundary: "any",
+    target_lanelet_ids: "",
+    target_way_ids: "",
+  })),
+};
+
+const canvas = document.getElementById("mapCanvas");
+const ctx = canvas.getContext("2d");
+const summary = document.getElementById("summary");
+
+function parseCsv(text) {
+  const lines = text.trim().split(/\r?\n/);
+  const header = lines.shift().split(",");
+  const ix = header.indexOf("local_x");
+  const iy = header.indexOf("local_y");
+  const ib = header.indexOf("boundary_type");
+  if (ix < 0 || iy < 0) throw new Error("local_x/local_y columns are required");
+  const points = [];
+  for (const line of lines) {
+    const row = line.split(",");
+    const x = Number(row[ix]);
+    const y = Number(row[iy]);
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      points.push({x, y, boundary: ib >= 0 ? row[ib] : "any"});
+    }
+  }
+  return points;
+}
+
+function computeBounds(points) {
+  const xs = points.map(p => p.x);
+  const ys = points.map(p => p.y);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+  };
+}
+
+function fitInitialRsus() {
+  if (!state.bounds) return;
+  const {minX, maxX, minY, maxY} = state.bounds;
+  state.rsus.forEach((rsu, i) => {
+    const t = (i + 1) / (state.rsus.length + 1);
+    rsu.x = minX + (maxX - minX) * t;
+    rsu.y = minY + (maxY - minY) * (0.35 + 0.3 * Math.sin(t * Math.PI * 2));
+  });
+}
+
+function resizeRsus(count) {
+  const nextCount = Math.max(1, Math.min(64, Math.round(Number(count) || 1)));
+  while (state.rsus.length < nextCount) {
+    const id = `curve_${String(state.rsus.length + 1).padStart(2, "0")}`;
+    const center = state.bounds ? {
+      x: (state.bounds.minX + state.bounds.maxX) / 2,
+      y: (state.bounds.minY + state.bounds.maxY) / 2,
+    } : {x: 0, y: 0};
+    state.rsus.push({id, x: center.x, y: center.y, z: 6.5, yaw_deg: 0, fov_deg: 70, max_range: 45, range_min: 0.05, num_rays: 361, hit_rank: 2, target_boundary: "any", target_lanelet_ids: "", target_way_ids: ""});
+  }
+  state.rsus.length = nextCount;
+  state.selected = Math.min(state.selected, state.rsus.length - 1);
+  document.getElementById("rsuCount").value = String(state.rsus.length);
+}
+
+function worldToScreen(x, y) {
+  const b = state.bounds || {minX: 0, maxX: 1, minY: 0, maxY: 1};
+  const pad = 42;
+  const sx = (canvas.width - pad * 2) / Math.max(1e-6, b.maxX - b.minX);
+  const sy = (canvas.height - pad * 2) / Math.max(1e-6, b.maxY - b.minY);
+  const s = Math.min(sx, sy);
+  const ox = (canvas.width - (b.maxX - b.minX) * s) / 2;
+  const oy = (canvas.height - (b.maxY - b.minY) * s) / 2;
+  return {x: ox + (x - b.minX) * s, y: canvas.height - (oy + (y - b.minY) * s), s};
+}
+
+function screenToWorld(x, y) {
+  const b = state.bounds || {minX: 0, maxX: 1, minY: 0, maxY: 1};
+  const ref = worldToScreen(b.minX, b.minY);
+  return {x: b.minX + (x - ref.x) / ref.s, y: b.minY + (ref.y - y) / ref.s};
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#111820";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (const p of state.points) {
+    const s = worldToScreen(p.x, p.y);
+    ctx.fillStyle = p.boundary === "left" ? "#54c6eb" : "#9be564";
+    ctx.fillRect(s.x - 1, s.y - 1, 2, 2);
+  }
+
+  state.rsus.forEach((rsu, index) => {
+    const p = worldToScreen(rsu.x, rsu.y);
+    const yaw = -rsu.yaw_deg * Math.PI / 180;
+    const fov = rsu.fov_deg * Math.PI / 180;
+    const rangePx = rsu.max_range * p.s;
+    ctx.strokeStyle = index === state.selected ? "#ffcf5a" : "#ff8a5a";
+    ctx.lineWidth = index === state.selected ? 3 : 2;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x + Math.cos(yaw - fov / 2) * rangePx, p.y + Math.sin(yaw - fov / 2) * rangePx);
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x + Math.cos(yaw + fov / 2) * rangePx, p.y + Math.sin(yaw + fov / 2) * rangePx);
+    ctx.stroke();
+    ctx.fillStyle = index === state.selected ? "#ffcf5a" : "#ff8a5a";
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.font = "13px system-ui";
+    ctx.fillText(rsu.id, p.x + 10, p.y - 10);
+  });
+}
+
+function renderList() {
+  const list = document.getElementById("rsuList");
+  list.innerHTML = state.rsus.map((rsu, i) => `
+    <div class="rsu-row ${i === state.selected ? "active" : ""}" data-index="${i}">
+      <strong>${rsu.id}</strong><span class="muted">${rsu.x.toFixed(2)}, ${rsu.y.toFixed(2)}</span>
+    </div>
+  `).join("");
+  list.querySelectorAll(".rsu-row").forEach(row => row.addEventListener("click", () => {
+    state.selected = Number(row.dataset.index);
+    render();
+  }));
+}
+
+function renderEditor() {
+  const rsu = state.rsus[state.selected];
+  const fields = [
+    ["id", "ID", "text"], ["x", "x", "number"], ["y", "y", "number"], ["z", "z", "number"],
+    ["yaw_deg", "yaw deg", "number"], ["fov_deg", "FOV deg", "number"],
+    ["max_range", "max range", "number"], ["range_min", "range min", "number"],
+    ["num_rays", "num rays", "number"], ["hit_rank", "hit rank", "number"],
+    ["target_boundary", "target boundary", "select"],
+    ["target_lanelet_ids", "lanelet ids", "text"], ["target_way_ids", "way ids", "text"],
+  ];
+  document.getElementById("editor").innerHTML = fields.map(([key, label, type]) => {
+    if (type === "select") {
+      return `<div class="field"><label>${label}</label><select data-key="${key}">
+        ${["any", "left", "right"].map(v => `<option value="${v}" ${rsu[key] === v ? "selected" : ""}>${v}</option>`).join("")}
+      </select></div>`;
+    }
+    return `<div class="field"><label>${label}</label><input data-key="${key}" type="${type}" value="${rsu[key]}"></div>`;
+  }).join("");
+  document.querySelectorAll("[data-key]").forEach(input => input.addEventListener("input", () => {
+    const key = input.dataset.key;
+    rsu[key] = input.type === "number" ? Number(input.value) : input.value;
+    render();
+  }));
+}
+
+function parseIds(text) {
+  return String(text || "").split(/[,\s]+/).map(v => v.trim()).filter(Boolean).map(Number).filter(Number.isFinite);
+}
+
+function yamlArray(values) {
+  return `[${values.join(", ")}]`;
+}
+
+function generateYaml() {
+  const lines = [
+    "rsu_laserscan_generator_node:",
+    "  ros__parameters:",
+    "    use_sim_time: true",
+    "    csv_path: /path/to/lane.csv",
+    "    map_frame_id: map",
+    "    default_fov_deg: 70.0",
+    "    default_max_range: 45.0",
+    "    default_range_min: 0.05",
+    "    default_timer_hz: 20.0",
+    "    default_num_rays: 361",
+    "    default_hit_rank: 2",
+    "    debug: true",
+    `    rsu_count: ${state.rsus.length}`,
+    "    rsu_id_prefix: curve_",
+    "",
+    "    rsu_ids:",
+  ];
+  for (const rsu of state.rsus) lines.push(`      - ${rsu.id}`);
+  lines.push("", "    rsus:");
+  for (const rsu of state.rsus) {
+    lines.push(
+      `      ${rsu.id}:`,
+      `        frame_id: rsu_${rsu.id}_laser`,
+      `        topic: /rsu/${rsu.id}/scan`,
+      `        x: ${Number(rsu.x).toFixed(6)}`,
+      `        y: ${Number(rsu.y).toFixed(6)}`,
+      `        z: ${Number(rsu.z).toFixed(3)}`,
+      `        yaw_deg: ${Number(rsu.yaw_deg).toFixed(3)}`,
+      `        fov_deg: ${Number(rsu.fov_deg).toFixed(3)}`,
+      `        max_range: ${Number(rsu.max_range).toFixed(3)}`,
+      `        range_min: ${Number(rsu.range_min).toFixed(3)}`,
+      `        num_rays: ${Math.round(Number(rsu.num_rays))}`,
+      `        hit_rank: ${Math.max(1, Math.round(Number(rsu.hit_rank)))}`,
+      `        target_boundary: ${rsu.target_boundary}`,
+      `        target_lanelet_ids: ${yamlArray(parseIds(rsu.target_lanelet_ids))}`,
+      `        target_way_ids: ${yamlArray(parseIds(rsu.target_way_ids))}`
+    );
+  }
+  document.getElementById("yamlOutput").value = lines.join("\n") + "\n";
+}
+
+function render() {
+  renderList();
+  renderEditor();
+  draw();
+  generateYaml();
+}
+
+canvas.addEventListener("mousedown", event => {
+  const rect = canvas.getBoundingClientRect();
+  const x = (event.clientX - rect.left) * canvas.width / rect.width;
+  const y = (event.clientY - rect.top) * canvas.height / rect.height;
+  let nearest = -1;
+  let nearestDist = Infinity;
+  state.rsus.forEach((rsu, i) => {
+    const p = worldToScreen(rsu.x, rsu.y);
+    const d = Math.hypot(p.x - x, p.y - y);
+    if (d < nearestDist) {
+      nearest = i;
+      nearestDist = d;
+    }
+  });
+  if (nearest >= 0 && nearestDist < 24) {
+    state.selected = nearest;
+    state.dragging = true;
+    render();
+  }
+});
+
+window.addEventListener("mousemove", event => {
+  if (!state.dragging) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = (event.clientX - rect.left) * canvas.width / rect.width;
+  const y = (event.clientY - rect.top) * canvas.height / rect.height;
+  const p = screenToWorld(x, y);
+  state.rsus[state.selected].x = p.x;
+  state.rsus[state.selected].y = p.y;
+  render();
+});
+window.addEventListener("mouseup", () => state.dragging = false);
+
+document.getElementById("csvInput").addEventListener("change", async event => {
+  const file = event.target.files[0];
+  if (!file) return;
+  const text = await file.text();
+  state.points = parseCsv(text);
+  state.bounds = computeBounds(state.points);
+  fitInitialRsus();
+  summary.textContent = `${state.points.length} lane points loaded`;
+  render();
+});
+document.getElementById("resetView").addEventListener("click", () => render());
+document.getElementById("applyCount").addEventListener("click", () => {
+  resizeRsus(document.getElementById("rsuCount").value);
+  render();
+});
+document.getElementById("addRsu").addEventListener("click", () => {
+  const id = `curve_${String(state.rsus.length + 1).padStart(2, "0")}`;
+  const center = state.bounds ? {
+    x: (state.bounds.minX + state.bounds.maxX) / 2,
+    y: (state.bounds.minY + state.bounds.maxY) / 2,
+  } : {x: 0, y: 0};
+  state.rsus.push({id, x: center.x, y: center.y, z: 6.5, yaw_deg: 0, fov_deg: 70, max_range: 45, range_min: 0.05, num_rays: 361, hit_rank: 2, target_boundary: "any", target_lanelet_ids: "", target_way_ids: ""});
+  state.selected = state.rsus.length - 1;
+  document.getElementById("rsuCount").value = String(state.rsus.length);
+  render();
+});
+document.getElementById("generate").addEventListener("click", generateYaml);
+
+render();
+</script>
+</body>
+</html>

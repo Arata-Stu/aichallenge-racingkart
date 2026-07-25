@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>rsu_laserscan_generator</name>
+  <version>0.1.0</version>
+  <description>Fixed RSU virtual LaserScan generator for lane boundary sensing</description>
+  <maintainer email="tanaka.arata.y5@s.gifu-u.ac.jp">Arata Tanaka</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake_auto</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>visualization_msgs</depend>
+
+  <exec_depend>laserscan_generator</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
