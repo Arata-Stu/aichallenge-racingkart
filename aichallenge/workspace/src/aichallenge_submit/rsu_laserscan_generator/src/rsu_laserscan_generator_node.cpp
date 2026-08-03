@@ -109,7 +109,9 @@ void RsuLaserScanGeneratorNode::load_rsus_from_params()
   auto rsu_ids = get_parameter("rsu_ids").as_string_array();
 
   if (rsu_ids.empty()) {
-    const int rsu_count = std::max(0, get_parameter("rsu_count").as_int());
+    int rsu_count = 0;
+    get_parameter("rsu_count", rsu_count);
+    rsu_count = std::max(0, rsu_count);
     const auto rsu_id_prefix = get_parameter("rsu_id_prefix").as_string();
     for (int i = 1; i <= rsu_count; ++i) {
       rsu_ids.push_back(numbered_id(rsu_id_prefix, i));
