@@ -34,6 +34,7 @@ ml_workspace/
 │  ├─ osm2csv.py
 │  └─ convert_weight.py
 ├─ pilot_net/               # PilotNet 用のデータ変換・学習コード一式
+├─ joy_profile_editor/      # /dev/input/js0 実測ベースの teleop_manager YAML 生成GUI
 ├─ rsu_fusion_net/          # 車両LiDAR + RSU LiDAR の時系列ゲート融合モデル
 └─ reinforcement_learning/  # 強化学習用の学習・評価コード一式
 ```
@@ -46,5 +47,6 @@ ml_workspace/
 - `train/`, `val/`: `rawdata/` から分けた rosbag（mcap）を置くためのディレクトリです（運用に応じて使います）。
 - `tiny_lidar_net/`: TinyLiDARNet 用のデータ変換・学習・重み変換コード一式です。使い方は `aichallenge/ml_workspace/tiny_lidar_net/README.md` を参照してください。
 - `pilot_net/`: PilotNet 用のデータ変換・学習コード一式です。
+- `joy_profile_editor/`: DualShock4 などの `/dev/input/js0` 実測値から `teleop_manager` 用 YAML を生成する小さなWeb UIです。
 - `rsu_fusion_net/`: 複数時刻の車両 LiDAR と RSU LiDAR を 1D Conv + GRU + distance gate で融合する学習コード一式です。
 - `reinforcement_learning/`: 強化学習用の学習・評価コード一式です。
