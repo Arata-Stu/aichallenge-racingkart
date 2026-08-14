@@ -8,14 +8,11 @@
 #include <sstream>
 #include <utility>
 
-namespace rsu_laserscan_generator
-{
-namespace
-{
+namespace rsu_laserscan_generator {
+namespace {
 constexpr double kPi = 3.14159265358979323846;
 
-std::vector<std::string> split_csv_line(const std::string & line)
-{
+std::vector<std::string> split_csv_line(const std::string &line) {
   std::stringstream ss(line);
   std::string cell;
   std::vector<std::string> row;
@@ -25,59 +22,65 @@ std::vector<std::string> split_csv_line(const std::string & line)
   return row;
 }
 
-std::vector<int64_t> get_int_array_param(
-  rclcpp::Node & node, const std::string & name, const std::vector<int64_t> & default_value = {})
-{
+std::vector<int64_t>
+get_int_array_param(rclcpp::Node &node, const std::string &name,
+                    const std::vector<int64_t> &default_value = {}) {
   node.declare_parameter<std::vector<int64_t>>(name, default_value);
   return node.get_parameter(name).as_integer_array();
 }
 
-std::set<int64_t> to_set(const std::vector<int64_t> & values)
-{
+std::set<int64_t> to_set(const std::vector<int64_t> &values) {
   return std::set<int64_t>(values.begin(), values.end());
 }
 
-std::string numbered_id(const std::string & prefix, const int index)
-{
+std::string numbered_id(const std::string &prefix, const int index) {
   std::ostringstream stream;
   stream << prefix << std::setw(2) << std::setfill('0') << index;
   return stream.str();
 }
-}  // namespace
+} // namespace
 
 RsuLaserScanGeneratorNode::RsuLaserScanGeneratorNode()
-: Node("rsu_laserscan_generator_node")
-{
+    : Node("rsu_laserscan_generator_node") {
   declare_and_get_params();
   load_walls_from_csv();
   load_rsus_from_params();
 
   if (rsus_.empty()) {
-    RCLCPP_ERROR(get_logger(), "No RSU configs were loaded. Set rsu_ids in the parameter file.");
+    RCLCPP_ERROR(
+        get_logger(),
+        "No RSU configs were loaded. Set rsu_ids in the parameter file.");
     rclcpp::shutdown();
     return;
   }
 
-  for (auto & rsu : rsus_) {
-    rsu.publisher = create_publisher<sensor_msgs::msg::LaserScan>(rsu.topic, 10);
+  for (auto &rsu : rsus_) {
+    rsu.publisher =
+        create_publisher<sensor_msgs::msg::LaserScan>(rsu.topic, 10);
   }
 
   if (publish_static_tf_) {
-    static_tf_broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(*this);
+    static_tf_broadcaster_ =
+        std::make_unique<tf2_ros::StaticTransformBroadcaster>(*this);
     publish_static_transforms();
   }
 
   if (enable_v2x_vehicles_) {
-    v2x_subscription_ = create_subscription<v2x_msgs::msg::V2XVehiclePositionArray>(
-      v2x_topic_, rclcpp::QoS(1).best_effort(),
-      std::bind(&RsuLaserScanGeneratorNode::on_v2x_positions, this, std::placeholders::_1));
+    v2x_subscription_ =
+        create_subscription<v2x_msgs::msg::V2XVehiclePositionArray>(
+            v2x_topic_, rclcpp::QoS(1).best_effort(),
+            std::bind(&RsuLaserScanGeneratorNode::on_v2x_positions, this,
+                      std::placeholders::_1));
     RCLCPP_INFO(
-      get_logger(), "Using V2X vehicles from %s (radius=%.2f m, timeout=%.2f s)",
-      v2x_topic_.c_str(), v2x_vehicle_radius_, v2x_timeout_sec_);
+        get_logger(),
+        "Using V2X vehicles from %s (box=%.2f x %.2f m, timeout=%.2f s)",
+        v2x_topic_.c_str(), v2x_vehicle_length_, v2x_vehicle_width_,
+        v2x_timeout_sec_);
   }
 
   if (debug_) {
-    marker_publisher_ = create_publisher<MarkerArray>("~/debug/markers", rclcpp::QoS(1).transient_local());
+    marker_publisher_ = create_publisher<MarkerArray>(
+        "~/debug/markers", rclcpp::QoS(1).transient_local());
     publish_debug_markers();
   }
 
@@ -88,12 +91,11 @@ RsuLaserScanGeneratorNode::RsuLaserScanGeneratorNode()
   }
 
   timer_ = create_wall_timer(
-    std::chrono::duration<double>(1.0 / default_timer_hz_),
-    std::bind(&RsuLaserScanGeneratorNode::timer_callback, this));
+      std::chrono::duration<double>(1.0 / default_timer_hz_),
+      std::bind(&RsuLaserScanGeneratorNode::timer_callback, this));
 }
 
-void RsuLaserScanGeneratorNode::declare_and_get_params()
-{
+void RsuLaserScanGeneratorNode::declare_and_get_params() {
   declare_parameter<std::string>("csv_path", "/path/to/lane.csv");
   declare_parameter<std::string>("map_frame_id", "map");
   declare_parameter<std::string>("v2x_topic", "/v2x/vehicle_positions");
@@ -103,7 +105,9 @@ void RsuLaserScanGeneratorNode::declare_and_get_params()
   declare_parameter<double>("default_timer_hz", 20.0);
   declare_parameter<int>("default_num_rays", 361);
   declare_parameter<int>("default_hit_rank", 2);
-  declare_parameter<double>("v2x_vehicle_radius", 1.0);
+  declare_parameter<double>("v2x_vehicle_length", 2.0);
+  declare_parameter<double>("v2x_vehicle_width", 1.45);
+  declare_parameter<double>("v2x_heading_min_displacement", 0.05);
   declare_parameter<double>("v2x_timeout_sec", 1.0);
   declare_parameter<bool>("enable_v2x_vehicles", true);
   declare_parameter<bool>("publish_static_tf", true);
@@ -120,19 +124,23 @@ void RsuLaserScanGeneratorNode::declare_and_get_params()
   get_parameter("default_timer_hz", default_timer_hz_);
   get_parameter("default_num_rays", default_num_rays_);
   get_parameter("default_hit_rank", default_hit_rank_);
-  get_parameter("v2x_vehicle_radius", v2x_vehicle_radius_);
+  get_parameter("v2x_vehicle_length", v2x_vehicle_length_);
+  get_parameter("v2x_vehicle_width", v2x_vehicle_width_);
+  get_parameter("v2x_heading_min_displacement", v2x_heading_min_displacement_);
   get_parameter("v2x_timeout_sec", v2x_timeout_sec_);
   get_parameter("enable_v2x_vehicles", enable_v2x_vehicles_);
   get_parameter("publish_static_tf", publish_static_tf_);
   get_parameter("debug", debug_);
 
-  v2x_vehicle_radius_ = std::max(0.0, v2x_vehicle_radius_);
+  v2x_vehicle_length_ = std::max(0.0, v2x_vehicle_length_);
+  v2x_vehicle_width_ = std::max(0.0, v2x_vehicle_width_);
+  v2x_heading_min_displacement_ = std::max(0.0, v2x_heading_min_displacement_);
   v2x_timeout_sec_ = std::max(0.0, v2x_timeout_sec_);
 }
 
-void RsuLaserScanGeneratorNode::load_rsus_from_params()
-{
-  declare_parameter<std::vector<std::string>>("rsu_ids", std::vector<std::string>{});
+void RsuLaserScanGeneratorNode::load_rsus_from_params() {
+  declare_parameter<std::vector<std::string>>("rsu_ids",
+                                              std::vector<std::string>{});
   auto rsu_ids = get_parameter("rsu_ids").as_string_array();
 
   if (rsu_ids.empty()) {
@@ -145,7 +153,7 @@ void RsuLaserScanGeneratorNode::load_rsus_from_params()
     }
   }
 
-  for (const auto & id : rsu_ids) {
+  for (const auto &id : rsu_ids) {
     const std::string prefix = "rsus." + id + ".";
     RsuConfig rsu;
     rsu.id = id;
@@ -183,8 +191,10 @@ void RsuLaserScanGeneratorNode::load_rsus_from_params()
     get_parameter(prefix + "num_rays", rsu.num_rays);
     get_parameter(prefix + "hit_rank", rsu.hit_rank);
     get_parameter(prefix + "target_boundary", rsu.target_boundary);
-    rsu.target_lanelet_ids = to_set(get_int_array_param(*this, prefix + "target_lanelet_ids"));
-    rsu.target_way_ids = to_set(get_int_array_param(*this, prefix + "target_way_ids"));
+    rsu.target_lanelet_ids =
+        to_set(get_int_array_param(*this, prefix + "target_lanelet_ids"));
+    rsu.target_way_ids =
+        to_set(get_int_array_param(*this, prefix + "target_way_ids"));
 
     rsu.hit_rank = std::max(1, rsu.hit_rank);
     rsu.num_rays = std::max(2, rsu.num_rays);
@@ -192,17 +202,18 @@ void RsuLaserScanGeneratorNode::load_rsus_from_params()
     rsu.max_range = std::max(rsu.range_min, rsu.max_range);
     rsus_.push_back(rsu);
 
-    RCLCPP_INFO(
-      get_logger(), "Loaded RSU '%s': topic=%s hit_rank=%d target_boundary=%s",
-      id.c_str(), rsu.topic.c_str(), rsu.hit_rank, rsu.target_boundary.c_str());
+    RCLCPP_INFO(get_logger(),
+                "Loaded RSU '%s': topic=%s hit_rank=%d target_boundary=%s",
+                id.c_str(), rsu.topic.c_str(), rsu.hit_rank,
+                rsu.target_boundary.c_str());
   }
 }
 
-void RsuLaserScanGeneratorNode::load_walls_from_csv()
-{
+void RsuLaserScanGeneratorNode::load_walls_from_csv() {
   std::ifstream file(csv_path_);
   if (!file.is_open()) {
-    RCLCPP_ERROR(get_logger(), "Failed to open CSV file: %s", csv_path_.c_str());
+    RCLCPP_ERROR(get_logger(), "Failed to open CSV file: %s",
+                 csv_path_.c_str());
     rclcpp::shutdown();
     return;
   }
@@ -228,21 +239,21 @@ void RsuLaserScanGeneratorNode::load_walls_from_csv()
       if (!is_offset_initialized_) {
         map_offset_ = point.start;
         is_offset_initialized_ = true;
-        RCLCPP_INFO(
-          get_logger(), "Map offset initialized to (%.3f, %.3f)", map_offset_.x, map_offset_.y);
+        RCLCPP_INFO(get_logger(), "Map offset initialized to (%.3f, %.3f)",
+                    map_offset_.x, map_offset_.y);
       }
       point.start = to_internal(point.start);
       way_points[point.way_id].push_back({seq_order, point});
-    } catch (const std::exception & error) {
+    } catch (const std::exception &error) {
       RCLCPP_WARN(get_logger(), "Could not parse CSV line: %s", error.what());
     }
   }
 
-  for (const auto & [way_id, points] : way_points) {
+  for (const auto &[way_id, points] : way_points) {
     auto sorted = points;
-    std::sort(sorted.begin(), sorted.end(), [](const auto & lhs, const auto & rhs) {
-      return lhs.first < rhs.first;
-    });
+    std::sort(
+        sorted.begin(), sorted.end(),
+        [](const auto &lhs, const auto &rhs) { return lhs.first < rhs.first; });
     for (size_t i = 0; i + 1 < sorted.size(); ++i) {
       WallSegment segment = sorted[i].second;
       segment.end = sorted[i + 1].second.start;
@@ -251,62 +262,82 @@ void RsuLaserScanGeneratorNode::load_walls_from_csv()
     }
   }
 
-  RCLCPP_INFO(get_logger(), "Loaded %zu lane boundary segments.", walls_.size());
+  RCLCPP_INFO(get_logger(), "Loaded %zu lane boundary segments.",
+              walls_.size());
 }
 
-void RsuLaserScanGeneratorNode::timer_callback()
-{
+void RsuLaserScanGeneratorNode::timer_callback() {
   const auto vehicles = get_active_vehicles();
-  for (const auto & rsu : rsus_) {
+  for (const auto &rsu : rsus_) {
     publish_scan(rsu, vehicles);
   }
 }
 
 void RsuLaserScanGeneratorNode::on_v2x_positions(
-  const v2x_msgs::msg::V2XVehiclePositionArray::ConstSharedPtr msg)
-{
+    const v2x_msgs::msg::V2XVehiclePositionArray::ConstSharedPtr msg) {
   std::vector<DynamicVehicle> vehicles;
   vehicles.reserve(msg->vehicles.size());
 
-  for (const auto & vehicle : msg->vehicles) {
-    const auto & vehicle_frame =
-      vehicle.header.frame_id.empty() ? msg->header.frame_id : vehicle.header.frame_id;
+  for (const auto &vehicle : msg->vehicles) {
+    const auto &vehicle_frame = vehicle.header.frame_id.empty()
+                                    ? msg->header.frame_id
+                                    : vehicle.header.frame_id;
     if (!vehicle_frame.empty() && vehicle_frame != map_frame_id_) {
       RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "Ignoring V2X vehicle '%s': frame '%s' does not match map frame '%s'",
-        vehicle.vehicle_id.c_str(), vehicle_frame.c_str(), map_frame_id_.c_str());
+          get_logger(), *get_clock(), 5000,
+          "Ignoring V2X vehicle '%s': frame '%s' does not match map frame '%s'",
+          vehicle.vehicle_id.c_str(), vehicle_frame.c_str(),
+          map_frame_id_.c_str());
       continue;
     }
 
-    if (!std::isfinite(vehicle.position.x) || !std::isfinite(vehicle.position.y)) {
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "Ignoring V2X vehicle '%s': position is not finite", vehicle.vehicle_id.c_str());
+    if (!std::isfinite(vehicle.position.x) ||
+        !std::isfinite(vehicle.position.y)) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                           "Ignoring V2X vehicle '%s': position is not finite",
+                           vehicle.vehicle_id.c_str());
       continue;
     }
 
     DynamicVehicle dynamic_vehicle;
     dynamic_vehicle.id = vehicle.vehicle_id;
-    dynamic_vehicle.position = to_internal({vehicle.position.x, vehicle.position.y});
+    dynamic_vehicle.position =
+        to_internal({vehicle.position.x, vehicle.position.y});
     vehicles.push_back(std::move(dynamic_vehicle));
   }
 
   std::lock_guard<std::mutex> lock(vehicles_mutex_);
+  for (auto &vehicle : vehicles) {
+    const auto previous = std::find_if(vehicles_.begin(), vehicles_.end(),
+                                       [&vehicle](const auto &candidate) {
+                                         return candidate.id == vehicle.id;
+                                       });
+    if (previous == vehicles_.end()) {
+      continue;
+    }
+
+    const double dx = vehicle.position.x - previous->position.x;
+    const double dy = vehicle.position.y - previous->position.y;
+    if (std::hypot(dx, dy) >= v2x_heading_min_displacement_) {
+      vehicle.yaw_rad = std::atan2(dy, dx);
+    } else {
+      vehicle.yaw_rad = previous->yaw_rad;
+    }
+  }
   vehicles_ = std::move(vehicles);
   last_v2x_update_ = std::chrono::steady_clock::now();
   has_v2x_update_ = true;
 }
 
-std::vector<DynamicVehicle> RsuLaserScanGeneratorNode::get_active_vehicles()
-{
+std::vector<DynamicVehicle> RsuLaserScanGeneratorNode::get_active_vehicles() {
   std::lock_guard<std::mutex> lock(vehicles_mutex_);
   if (!has_v2x_update_) {
     return {};
   }
   if (v2x_timeout_sec_ > 0.0) {
     const auto age = std::chrono::duration<double>(
-      std::chrono::steady_clock::now() - last_v2x_update_).count();
+                         std::chrono::steady_clock::now() - last_v2x_update_)
+                         .count();
     if (age > v2x_timeout_sec_) {
       return {};
     }
@@ -315,8 +346,7 @@ std::vector<DynamicVehicle> RsuLaserScanGeneratorNode::get_active_vehicles()
 }
 
 void RsuLaserScanGeneratorNode::publish_scan(
-  const RsuConfig & rsu, const std::vector<DynamicVehicle> & vehicles)
-{
+    const RsuConfig &rsu, const std::vector<DynamicVehicle> &vehicles) {
   auto scan = std::make_unique<sensor_msgs::msg::LaserScan>();
   scan->header.stamp = now();
   scan->header.frame_id = rsu.frame_id;
@@ -324,7 +354,8 @@ void RsuLaserScanGeneratorNode::publish_scan(
   scan->angle_max = rsu.fov_rad / 2.0;
   scan->angle_increment = rsu.fov_rad / static_cast<double>(rsu.num_rays - 1);
   scan->time_increment = 0.0;
-  scan->scan_time = rsu.timer_hz > 0.0 ? 1.0 / rsu.timer_hz : 1.0 / default_timer_hz_;
+  scan->scan_time =
+      rsu.timer_hz > 0.0 ? 1.0 / rsu.timer_hz : 1.0 / default_timer_hz_;
   scan->range_min = rsu.range_min;
   scan->range_max = rsu.max_range;
   scan->ranges.assign(rsu.num_rays, std::numeric_limits<float>::infinity());
@@ -332,17 +363,16 @@ void RsuLaserScanGeneratorNode::publish_scan(
   for (int i = 0; i < rsu.num_rays; ++i) {
     const double relative_angle = scan->angle_min + i * scan->angle_increment;
     const double ray_angle = rsu.yaw_rad + relative_angle;
-    const Point2D ray_end{
-      rsu.position.x + rsu.max_range * std::cos(ray_angle),
-      rsu.position.y + rsu.max_range * std::sin(ray_angle)};
+    const Point2D ray_end{rsu.position.x + rsu.max_range * std::cos(ray_angle),
+                          rsu.position.y + rsu.max_range * std::sin(ray_angle)};
 
     std::vector<double> distances;
-    for (const auto & wall : walls_) {
+    for (const auto &wall : walls_) {
       if (!wall_matches_rsu(wall, rsu)) {
         continue;
       }
-      const auto intersection =
-        get_line_segment_intersection(rsu.position, ray_end, wall.start, wall.end);
+      const auto intersection = get_line_segment_intersection(
+          rsu.position, ray_end, wall.start, wall.end);
       if (!intersection) {
         continue;
       }
@@ -360,13 +390,11 @@ void RsuLaserScanGeneratorNode::publish_scan(
       selected_distance = distances[static_cast<size_t>(rsu.hit_rank - 1)];
     }
 
-    for (const auto & vehicle : vehicles) {
-      const auto vehicle_distance = get_ray_circle_intersection_distance(
-        rsu.position, ray_end, vehicle.position, v2x_vehicle_radius_);
-      if (
-        vehicle_distance && *vehicle_distance >= rsu.range_min &&
-        *vehicle_distance <= rsu.max_range)
-      {
+    for (const auto &vehicle : vehicles) {
+      const auto vehicle_distance =
+          get_ray_box_intersection_distance(rsu.position, ray_end, vehicle);
+      if (vehicle_distance && *vehicle_distance >= rsu.range_min &&
+          *vehicle_distance <= rsu.max_range) {
         selected_distance = std::min(selected_distance, *vehicle_distance);
       }
     }
@@ -379,30 +407,35 @@ void RsuLaserScanGeneratorNode::publish_scan(
   rsu.publisher->publish(std::move(scan));
 }
 
-bool RsuLaserScanGeneratorNode::wall_matches_rsu(const WallSegment & wall, const RsuConfig & rsu) const
-{
-  if (rsu.target_boundary != "any" && wall.boundary_type != rsu.target_boundary) {
+bool RsuLaserScanGeneratorNode::wall_matches_rsu(const WallSegment &wall,
+                                                 const RsuConfig &rsu) const {
+  if (rsu.target_boundary != "any" &&
+      wall.boundary_type != rsu.target_boundary) {
     return false;
   }
-  if (!rsu.target_lanelet_ids.empty() && rsu.target_lanelet_ids.count(wall.lanelet_id) == 0) {
+  if (!rsu.target_lanelet_ids.empty() &&
+      rsu.target_lanelet_ids.count(wall.lanelet_id) == 0) {
     return false;
   }
-  if (!rsu.target_way_ids.empty() && rsu.target_way_ids.count(wall.way_id) == 0) {
+  if (!rsu.target_way_ids.empty() &&
+      rsu.target_way_ids.count(wall.way_id) == 0) {
     return false;
   }
   return true;
 }
 
 std::optional<Point2D> RsuLaserScanGeneratorNode::get_line_segment_intersection(
-  Point2D p1, Point2D p2, Point2D p3, Point2D p4) const
-{
-  const double den = (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x);
+    Point2D p1, Point2D p2, Point2D p3, Point2D p4) const {
+  const double den =
+      (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x);
   if (std::abs(den) < 1e-9) {
     return std::nullopt;
   }
 
-  const double t_num = (p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x);
-  const double u_num = -((p1.x - p2.x) * (p1.y - p3.y) - (p1.y - p2.y) * (p1.x - p3.x));
+  const double t_num =
+      (p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x);
+  const double u_num =
+      -((p1.x - p2.x) * (p1.y - p3.y) - (p1.y - p2.y) * (p1.x - p3.x));
   const double t = t_num / den;
   const double u = u_num / den;
   if (t >= 0.0 && t <= 1.0 && u >= 0.0 && u <= 1.0) {
@@ -411,57 +444,71 @@ std::optional<Point2D> RsuLaserScanGeneratorNode::get_line_segment_intersection(
   return std::nullopt;
 }
 
-std::optional<double> RsuLaserScanGeneratorNode::get_ray_circle_intersection_distance(
-  Point2D ray_start, Point2D ray_end, Point2D center, const double radius) const
-{
-  if (radius <= 0.0) {
+std::optional<double>
+RsuLaserScanGeneratorNode::get_ray_box_intersection_distance(
+    Point2D ray_start, Point2D ray_end, const DynamicVehicle &vehicle) const {
+  if (v2x_vehicle_length_ <= 0.0 || v2x_vehicle_width_ <= 0.0) {
     return std::nullopt;
   }
 
-  const double dx = ray_end.x - ray_start.x;
-  const double dy = ray_end.y - ray_start.y;
-  const double fx = ray_start.x - center.x;
-  const double fy = ray_start.y - center.y;
-  const double a = dx * dx + dy * dy;
-  if (a <= 1e-12) {
+  const double cos_yaw = std::cos(vehicle.yaw_rad);
+  const double sin_yaw = std::sin(vehicle.yaw_rad);
+  const auto to_vehicle_frame = [vehicle, cos_yaw,
+                                 sin_yaw](const Point2D point) {
+    const double dx = point.x - vehicle.position.x;
+    const double dy = point.y - vehicle.position.y;
+    return Point2D{cos_yaw * dx + sin_yaw * dy, -sin_yaw * dx + cos_yaw * dy};
+  };
+
+  const Point2D local_start = to_vehicle_frame(ray_start);
+  const Point2D local_end = to_vehicle_frame(ray_end);
+  const double direction_x = local_end.x - local_start.x;
+  const double direction_y = local_end.y - local_start.y;
+  const double ray_length = std::hypot(direction_x, direction_y);
+  if (ray_length <= 1e-12) {
     return std::nullopt;
   }
 
-  const double b = 2.0 * (fx * dx + fy * dy);
-  const double c = fx * fx + fy * fy - radius * radius;
-  const double discriminant = b * b - 4.0 * a * c;
-  if (discriminant < 0.0) {
+  double t_min = 0.0;
+  double t_max = 1.0;
+  const auto intersect_slab =
+      [&t_min, &t_max](const double origin, const double direction,
+                       const double min_value, const double max_value) {
+        if (std::abs(direction) <= 1e-12) {
+          return origin >= min_value && origin <= max_value;
+        }
+        double t1 = (min_value - origin) / direction;
+        double t2 = (max_value - origin) / direction;
+        if (t1 > t2) {
+          std::swap(t1, t2);
+        }
+        t_min = std::max(t_min, t1);
+        t_max = std::min(t_max, t2);
+        return t_min <= t_max;
+      };
+
+  const double half_length = 0.5 * v2x_vehicle_length_;
+  const double half_width = 0.5 * v2x_vehicle_width_;
+  if (!intersect_slab(local_start.x, direction_x, -half_length, half_length) ||
+      !intersect_slab(local_start.y, direction_y, -half_width, half_width)) {
     return std::nullopt;
   }
 
-  const double sqrt_discriminant = std::sqrt(discriminant);
-  const double candidates[] = {
-    (-b - sqrt_discriminant) / (2.0 * a),
-    (-b + sqrt_discriminant) / (2.0 * a)};
-  double nearest_t = std::numeric_limits<double>::infinity();
-  for (const double t : candidates) {
-    if (t >= 0.0 && t <= 1.0) {
-      nearest_t = std::min(nearest_t, t);
-    }
-  }
-  if (!std::isfinite(nearest_t)) {
+  if (t_min < 0.0 || t_min > 1.0) {
     return std::nullopt;
   }
-  return nearest_t * std::sqrt(a);
+  return t_min * ray_length;
 }
 
-Point2D RsuLaserScanGeneratorNode::to_internal(Point2D point) const
-{
+Point2D RsuLaserScanGeneratorNode::to_internal(Point2D point) const {
   return {point.x - map_offset_.x, point.y - map_offset_.y};
 }
 
-Point2D RsuLaserScanGeneratorNode::to_map(Point2D point) const
-{
+Point2D RsuLaserScanGeneratorNode::to_map(Point2D point) const {
   return {point.x + map_offset_.x, point.y + map_offset_.y};
 }
 
-void RsuLaserScanGeneratorNode::publish_static_transforms()
-{
+void RsuLaserScanGeneratorNode::publish_static_transforms() {
   if (!static_tf_broadcaster_) {
     return;
   }
@@ -469,7 +516,7 @@ void RsuLaserScanGeneratorNode::publish_static_transforms()
   std::vector<geometry_msgs::msg::TransformStamped> transforms;
   transforms.reserve(rsus_.size());
   const auto stamp = now();
-  for (const auto & rsu : rsus_) {
+  for (const auto &rsu : rsus_) {
     const auto position = to_map(rsu.position);
     geometry_msgs::msg::TransformStamped transform;
     transform.header.stamp = stamp;
@@ -484,13 +531,12 @@ void RsuLaserScanGeneratorNode::publish_static_transforms()
   }
 
   static_tf_broadcaster_->sendTransform(transforms);
-  RCLCPP_INFO(
-    get_logger(), "Published %zu static RSU transforms with parent frame '%s'",
-    transforms.size(), map_frame_id_.c_str());
+  RCLCPP_INFO(get_logger(),
+              "Published %zu static RSU transforms with parent frame '%s'",
+              transforms.size(), map_frame_id_.c_str());
 }
 
-void RsuLaserScanGeneratorNode::publish_debug_markers()
-{
+void RsuLaserScanGeneratorNode::publish_debug_markers() {
   if (!marker_publisher_) {
     return;
   }
@@ -509,7 +555,7 @@ void RsuLaserScanGeneratorNode::publish_debug_markers()
   walls.color.g = 0.8f;
   walls.color.b = 1.0f;
   walls.color.a = 0.7f;
-  for (const auto & wall : walls_) {
+  for (const auto &wall : walls_) {
     const auto p1_map = to_map(wall.start);
     const auto p2_map = to_map(wall.end);
     geometry_msgs::msg::Point p1;
@@ -524,7 +570,7 @@ void RsuLaserScanGeneratorNode::publish_debug_markers()
   array.markers.push_back(walls);
 
   int marker_id = 1;
-  for (const auto & rsu : rsus_) {
+  for (const auto &rsu : rsus_) {
     const auto pos_map = to_map(rsu.position);
 
     Marker origin;
@@ -578,12 +624,12 @@ void RsuLaserScanGeneratorNode::publish_debug_markers()
   marker_publisher_->publish(array);
 }
 
-}  // namespace rsu_laserscan_generator
+} // namespace rsu_laserscan_generator
 
-int main(int argc, char * argv[])
-{
+int main(int argc, char *argv[]) {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<rsu_laserscan_generator::RsuLaserScanGeneratorNode>());
+  rclcpp::spin(
+      std::make_shared<rsu_laserscan_generator::RsuLaserScanGeneratorNode>());
   rclcpp::shutdown();
   return 0;
 }
