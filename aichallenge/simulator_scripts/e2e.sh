@@ -16,7 +16,7 @@ exec $AWSIM_DIRECTORY/AWSIM.x86_64 \
     --sound off \
     --collisions on \
     --handicap off \
-    --wall-recovery off \
+    --wall-recovery "${AIC_WALL_RECOVERY:-off}" \
     --start-random on \
     --ranking off \
     --camera cpu \

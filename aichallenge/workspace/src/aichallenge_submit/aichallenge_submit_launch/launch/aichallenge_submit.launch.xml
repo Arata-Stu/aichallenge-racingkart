@@ -4,12 +4,18 @@
   <arg name="use_sim_time"/>
   <arg name="sensor_model"/>
   <arg name="launch_vehicle_interface"/>
+  <arg name="run_rviz" default="false"/>
+  <arg name="control_method" default="mpc"/>
+  <arg name="use_obstacle_avoidance" default="false"/>
 
   <log message="The arguments for aichallenge_submit_launch."/>
   <log message=" - simulation: $(var simulation)"/>
   <log message=" - use_sim_time: $(var use_sim_time)"/>
   <log message=" - sensor_model: $(var sensor_model)"/>
   <log message=" - launch_vehicle_interface: $(var launch_vehicle_interface)"/>
+  <log message=" - run_rviz: $(var run_rviz)"/>
+  <log message=" - control_method: $(var control_method)"/>
+  <log message=" - use_obstacle_avoidance: $(var use_obstacle_avoidance)"/>
 
   <include file="$(find-pkg-share aichallenge_submit_launch)/launch/reference.launch.xml" >
     <arg name="vehicle_model" value="racing_kart"/>
@@ -18,5 +24,16 @@
     <arg name="use_sim_time" value="$(var use_sim_time)"/>
     <arg name="simulation" value="$(var simulation)"/>
     <arg name="launch_vehicle_interface" value="$(var launch_vehicle_interface)"/>
+    <arg name="control_method" value="$(var control_method)"/>
+    <arg name="use_obstacle_avoidance" value="$(var use_obstacle_avoidance)"/>
   </include>
+
+  <!-- Run the shared RSU scan source once, together with the representative RViz player. -->
+  <group if="$(var simulation)">
+    <group if="$(var run_rviz)">
+      <include file="$(find-pkg-share rsu_laserscan_generator)/launch/rsu_laserscan_generator.launch.xml">
+        <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      </include>
+    </group>
+  </group>
 </launch>

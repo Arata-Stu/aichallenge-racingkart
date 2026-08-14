@@ -43,6 +43,8 @@ make eval → run_evaluation.bash → evaluation.launch.xml
   自動送信、手動で送るなら `make awsim-request-start`）。
 - センサー（camera/LiDAR）は off が既定。GPU 描画への切り替えは各ファイル末尾のコメント参照。
 - 引数の完全な仕様は AWSIM リポジトリの `docs/AIChallenge/specs/CLI.md` を参照。
+- `--wall-recovery` を持つモードは、未指定時は従来どおり `off`。手動開発では
+  `AIC_WALL_RECOVERY=on` を渡すと `on` に切り替えられる。
 
 ## 設計方針
 

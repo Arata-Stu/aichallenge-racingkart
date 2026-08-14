@@ -62,6 +62,20 @@ RsuLaserScanGeneratorNode::RsuLaserScanGeneratorNode()
     rsu.publisher = create_publisher<sensor_msgs::msg::LaserScan>(rsu.topic, 10);
   }
 
+  if (publish_static_tf_) {
+    static_tf_broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(*this);
+    publish_static_transforms();
+  }
+
+  if (enable_v2x_vehicles_) {
+    v2x_subscription_ = create_subscription<v2x_msgs::msg::V2XVehiclePositionArray>(
+      v2x_topic_, rclcpp::QoS(1).best_effort(),
+      std::bind(&RsuLaserScanGeneratorNode::on_v2x_positions, this, std::placeholders::_1));
+    RCLCPP_INFO(
+      get_logger(), "Using V2X vehicles from %s (radius=%.2f m, timeout=%.2f s)",
+      v2x_topic_.c_str(), v2x_vehicle_radius_, v2x_timeout_sec_);
+  }
+
   if (debug_) {
     marker_publisher_ = create_publisher<MarkerArray>("~/debug/markers", rclcpp::QoS(1).transient_local());
     publish_debug_markers();
@@ -82,25 +96,38 @@ void RsuLaserScanGeneratorNode::declare_and_get_params()
 {
   declare_parameter<std::string>("csv_path", "/path/to/lane.csv");
   declare_parameter<std::string>("map_frame_id", "map");
+  declare_parameter<std::string>("v2x_topic", "/v2x/vehicle_positions");
   declare_parameter<double>("default_fov_deg", 90.0);
   declare_parameter<double>("default_max_range", 35.0);
   declare_parameter<double>("default_range_min", 0.05);
   declare_parameter<double>("default_timer_hz", 20.0);
   declare_parameter<int>("default_num_rays", 361);
   declare_parameter<int>("default_hit_rank", 2);
+  declare_parameter<double>("v2x_vehicle_radius", 1.0);
+  declare_parameter<double>("v2x_timeout_sec", 1.0);
+  declare_parameter<bool>("enable_v2x_vehicles", true);
+  declare_parameter<bool>("publish_static_tf", true);
   declare_parameter<bool>("debug", true);
   declare_parameter<int>("rsu_count", 0);
   declare_parameter<std::string>("rsu_id_prefix", "curve_");
 
   get_parameter("csv_path", csv_path_);
   get_parameter("map_frame_id", map_frame_id_);
+  get_parameter("v2x_topic", v2x_topic_);
   get_parameter("default_fov_deg", default_fov_deg_);
   get_parameter("default_max_range", default_max_range_);
   get_parameter("default_range_min", default_range_min_);
   get_parameter("default_timer_hz", default_timer_hz_);
   get_parameter("default_num_rays", default_num_rays_);
   get_parameter("default_hit_rank", default_hit_rank_);
+  get_parameter("v2x_vehicle_radius", v2x_vehicle_radius_);
+  get_parameter("v2x_timeout_sec", v2x_timeout_sec_);
+  get_parameter("enable_v2x_vehicles", enable_v2x_vehicles_);
+  get_parameter("publish_static_tf", publish_static_tf_);
   get_parameter("debug", debug_);
+
+  v2x_vehicle_radius_ = std::max(0.0, v2x_vehicle_radius_);
+  v2x_timeout_sec_ = std::max(0.0, v2x_timeout_sec_);
 }
 
 void RsuLaserScanGeneratorNode::load_rsus_from_params()
@@ -229,12 +256,66 @@ void RsuLaserScanGeneratorNode::load_walls_from_csv()
 
 void RsuLaserScanGeneratorNode::timer_callback()
 {
+  const auto vehicles = get_active_vehicles();
   for (const auto & rsu : rsus_) {
-    publish_scan(rsu);
+    publish_scan(rsu, vehicles);
   }
 }
 
-void RsuLaserScanGeneratorNode::publish_scan(const RsuConfig & rsu)
+void RsuLaserScanGeneratorNode::on_v2x_positions(
+  const v2x_msgs::msg::V2XVehiclePositionArray::ConstSharedPtr msg)
+{
+  std::vector<DynamicVehicle> vehicles;
+  vehicles.reserve(msg->vehicles.size());
+
+  for (const auto & vehicle : msg->vehicles) {
+    const auto & vehicle_frame =
+      vehicle.header.frame_id.empty() ? msg->header.frame_id : vehicle.header.frame_id;
+    if (!vehicle_frame.empty() && vehicle_frame != map_frame_id_) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Ignoring V2X vehicle '%s': frame '%s' does not match map frame '%s'",
+        vehicle.vehicle_id.c_str(), vehicle_frame.c_str(), map_frame_id_.c_str());
+      continue;
+    }
+
+    if (!std::isfinite(vehicle.position.x) || !std::isfinite(vehicle.position.y)) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Ignoring V2X vehicle '%s': position is not finite", vehicle.vehicle_id.c_str());
+      continue;
+    }
+
+    DynamicVehicle dynamic_vehicle;
+    dynamic_vehicle.id = vehicle.vehicle_id;
+    dynamic_vehicle.position = to_internal({vehicle.position.x, vehicle.position.y});
+    vehicles.push_back(std::move(dynamic_vehicle));
+  }
+
+  std::lock_guard<std::mutex> lock(vehicles_mutex_);
+  vehicles_ = std::move(vehicles);
+  last_v2x_update_ = std::chrono::steady_clock::now();
+  has_v2x_update_ = true;
+}
+
+std::vector<DynamicVehicle> RsuLaserScanGeneratorNode::get_active_vehicles()
+{
+  std::lock_guard<std::mutex> lock(vehicles_mutex_);
+  if (!has_v2x_update_) {
+    return {};
+  }
+  if (v2x_timeout_sec_ > 0.0) {
+    const auto age = std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - last_v2x_update_).count();
+    if (age > v2x_timeout_sec_) {
+      return {};
+    }
+  }
+  return vehicles_;
+}
+
+void RsuLaserScanGeneratorNode::publish_scan(
+  const RsuConfig & rsu, const std::vector<DynamicVehicle> & vehicles)
 {
   auto scan = std::make_unique<sensor_msgs::msg::LaserScan>();
   scan->header.stamp = now();
@@ -273,9 +354,25 @@ void RsuLaserScanGeneratorNode::publish_scan(const RsuConfig & rsu)
       }
     }
 
+    double selected_distance = std::numeric_limits<double>::infinity();
     if (static_cast<int>(distances.size()) >= rsu.hit_rank) {
       std::sort(distances.begin(), distances.end());
-      scan->ranges[i] = static_cast<float>(distances[static_cast<size_t>(rsu.hit_rank - 1)]);
+      selected_distance = distances[static_cast<size_t>(rsu.hit_rank - 1)];
+    }
+
+    for (const auto & vehicle : vehicles) {
+      const auto vehicle_distance = get_ray_circle_intersection_distance(
+        rsu.position, ray_end, vehicle.position, v2x_vehicle_radius_);
+      if (
+        vehicle_distance && *vehicle_distance >= rsu.range_min &&
+        *vehicle_distance <= rsu.max_range)
+      {
+        selected_distance = std::min(selected_distance, *vehicle_distance);
+      }
+    }
+
+    if (std::isfinite(selected_distance)) {
+      scan->ranges[i] = static_cast<float>(selected_distance);
     }
   }
 
@@ -314,6 +411,45 @@ std::optional<Point2D> RsuLaserScanGeneratorNode::get_line_segment_intersection(
   return std::nullopt;
 }
 
+std::optional<double> RsuLaserScanGeneratorNode::get_ray_circle_intersection_distance(
+  Point2D ray_start, Point2D ray_end, Point2D center, const double radius) const
+{
+  if (radius <= 0.0) {
+    return std::nullopt;
+  }
+
+  const double dx = ray_end.x - ray_start.x;
+  const double dy = ray_end.y - ray_start.y;
+  const double fx = ray_start.x - center.x;
+  const double fy = ray_start.y - center.y;
+  const double a = dx * dx + dy * dy;
+  if (a <= 1e-12) {
+    return std::nullopt;
+  }
+
+  const double b = 2.0 * (fx * dx + fy * dy);
+  const double c = fx * fx + fy * fy - radius * radius;
+  const double discriminant = b * b - 4.0 * a * c;
+  if (discriminant < 0.0) {
+    return std::nullopt;
+  }
+
+  const double sqrt_discriminant = std::sqrt(discriminant);
+  const double candidates[] = {
+    (-b - sqrt_discriminant) / (2.0 * a),
+    (-b + sqrt_discriminant) / (2.0 * a)};
+  double nearest_t = std::numeric_limits<double>::infinity();
+  for (const double t : candidates) {
+    if (t >= 0.0 && t <= 1.0) {
+      nearest_t = std::min(nearest_t, t);
+    }
+  }
+  if (!std::isfinite(nearest_t)) {
+    return std::nullopt;
+  }
+  return nearest_t * std::sqrt(a);
+}
+
 Point2D RsuLaserScanGeneratorNode::to_internal(Point2D point) const
 {
   return {point.x - map_offset_.x, point.y - map_offset_.y};
@@ -322,6 +458,35 @@ Point2D RsuLaserScanGeneratorNode::to_internal(Point2D point) const
 Point2D RsuLaserScanGeneratorNode::to_map(Point2D point) const
 {
   return {point.x + map_offset_.x, point.y + map_offset_.y};
+}
+
+void RsuLaserScanGeneratorNode::publish_static_transforms()
+{
+  if (!static_tf_broadcaster_) {
+    return;
+  }
+
+  std::vector<geometry_msgs::msg::TransformStamped> transforms;
+  transforms.reserve(rsus_.size());
+  const auto stamp = now();
+  for (const auto & rsu : rsus_) {
+    const auto position = to_map(rsu.position);
+    geometry_msgs::msg::TransformStamped transform;
+    transform.header.stamp = stamp;
+    transform.header.frame_id = map_frame_id_;
+    transform.child_frame_id = rsu.frame_id;
+    transform.transform.translation.x = position.x;
+    transform.transform.translation.y = position.y;
+    transform.transform.translation.z = rsu.z;
+    transform.transform.rotation.z = std::sin(rsu.yaw_rad / 2.0);
+    transform.transform.rotation.w = std::cos(rsu.yaw_rad / 2.0);
+    transforms.push_back(std::move(transform));
+  }
+
+  static_tf_broadcaster_->sendTransform(transforms);
+  RCLCPP_INFO(
+    get_logger(), "Published %zu static RSU transforms with parent frame '%s'",
+    transforms.size(), map_frame_id_.c_str());
 }
 
 void RsuLaserScanGeneratorNode::publish_debug_markers()

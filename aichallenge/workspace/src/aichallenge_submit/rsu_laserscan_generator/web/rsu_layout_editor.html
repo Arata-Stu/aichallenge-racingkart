@@ -366,6 +366,11 @@ function generateYaml() {
     "    use_sim_time: true",
     "    csv_path: /path/to/lane.csv",
     "    map_frame_id: map",
+    "    enable_v2x_vehicles: true",
+    "    v2x_topic: /v2x/vehicle_positions",
+    "    v2x_vehicle_radius: 1.0",
+    "    v2x_timeout_sec: 1.0",
+    "    publish_static_tf: true",
     "    default_fov_deg: 70.0",
     "    default_max_range: 45.0",
     "    default_range_min: 0.05",
@@ -381,6 +386,8 @@ function generateYaml() {
   for (const rsu of state.rsus) lines.push(`      - ${rsu.id}`);
   lines.push("", "    rsus:");
   for (const rsu of state.rsus) {
+    const targetLaneletIds = parseIds(rsu.target_lanelet_ids);
+    const targetWayIds = parseIds(rsu.target_way_ids);
     lines.push(
       `      ${rsu.id}:`,
       `        frame_id: rsu_${rsu.id}_laser`,
@@ -394,10 +401,14 @@ function generateYaml() {
       `        range_min: ${Number(rsu.range_min).toFixed(3)}`,
       `        num_rays: ${Math.round(Number(rsu.num_rays))}`,
       `        hit_rank: ${Math.max(1, Math.round(Number(rsu.hit_rank)))}`,
-      `        target_boundary: ${rsu.target_boundary}`,
-      `        target_lanelet_ids: ${yamlArray(parseIds(rsu.target_lanelet_ids))}`,
-      `        target_way_ids: ${yamlArray(parseIds(rsu.target_way_ids))}`
+      `        target_boundary: ${rsu.target_boundary}`
     );
+    if (targetLaneletIds.length) {
+      lines.push(`        target_lanelet_ids: ${yamlArray(targetLaneletIds)}`);
+    }
+    if (targetWayIds.length) {
+      lines.push(`        target_way_ids: ${yamlArray(targetWayIds)}`);
+    }
   }
   document.getElementById("yamlOutput").value = lines.join("\n") + "\n";
 }

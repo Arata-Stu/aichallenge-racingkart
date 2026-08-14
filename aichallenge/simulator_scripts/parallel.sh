@@ -17,7 +17,7 @@ exec $AWSIM_DIRECTORY/AWSIM.x86_64 \
     --sound off \
     --collisions off \
     --handicap on \
-    --wall-recovery off \
+    --wall-recovery "${AIC_WALL_RECOVERY:-off}" \
     --ranking on \
     -screen-fullscreen 1 \
     -screen-width 1280 \
