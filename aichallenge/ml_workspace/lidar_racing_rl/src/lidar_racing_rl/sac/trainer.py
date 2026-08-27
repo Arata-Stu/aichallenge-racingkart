@@ -473,9 +473,17 @@ def train_lidar_sac(
     last_checkpoint_update: int | None = None
     latest_update_metrics = None
     reward_window = jnp.asarray(0.0, dtype=jnp.float32)
+    progress_window = jnp.asarray(0.0, dtype=jnp.float32)
+    collision_window = jnp.asarray(0, dtype=jnp.int32)
+    off_track_window = jnp.asarray(0, dtype=jnp.int32)
+    race_complete_window = jnp.asarray(0, dtype=jnp.int32)
     terminated_window = jnp.asarray(0, dtype=jnp.int32)
     truncated_window = jnp.asarray(0, dtype=jnp.int32)
     window_transitions = 0
+    track_length = float(simulator.track_length)
+    control_dt = float(_value(env_config, "simulator", "physics_timestep")) * int(
+        _value(env_config, "simulator", "timestep_ratio")
+    )
     metrics_path = run_directory / "metrics.jsonl"
     checkpoint_root = run_directory / "checkpoints"
     submodule_commit = next(iter(snapshot.submodule_commits.values()))
@@ -529,6 +537,12 @@ def train_lidar_sac(
             )
 
         reward_window = reward_window + jnp.sum(result.reward)
+        progress_window = progress_window + jnp.sum(result.diagnostics.progress_delta)
+        collision_window = collision_window + jnp.sum(result.diagnostics.collision)
+        off_track_window = off_track_window + jnp.sum(result.diagnostics.off_track)
+        race_complete_window = race_complete_window + jnp.sum(
+            result.diagnostics.race_complete
+        )
         terminated_window = terminated_window + jnp.sum(result.terminated)
         truncated_window = truncated_window + jnp.sum(result.truncated)
         window_transitions += num_envs
@@ -567,6 +581,13 @@ def train_lidar_sac(
             or session_environment_transitions >= session_transition_budget
         ):
             elapsed = time.perf_counter() - started
+            progress = float(jax.device_get(progress_window))
+            collisions = int(jax.device_get(collision_window))
+            off_tracks = int(jax.device_get(off_track_window))
+            race_completions = int(jax.device_get(race_complete_window))
+            terminations = int(jax.device_get(terminated_window))
+            truncations = int(jax.device_get(truncated_window))
+            completed_episodes = terminations + truncations
             record: dict[str, Any] = {
                 "collection": collections,
                 "environment_transitions": cumulative_environment_transitions,
@@ -577,8 +598,31 @@ def train_lidar_sac(
                     jax.device_get(reward_window)
                 )
                 / window_transitions,
-                "terminated_count": int(jax.device_get(terminated_window)),
-                "truncated_count": int(jax.device_get(truncated_window)),
+                "mean_course_progress_meters_per_transition": (
+                    progress / window_transitions
+                ),
+                "mean_course_progress_fraction_per_transition": (
+                    progress / (window_transitions * track_length)
+                ),
+                "course_progress_meters_per_simulated_second": (
+                    progress / (window_transitions * control_dt)
+                ),
+                "collision_count": collisions,
+                "off_track_count": off_tracks,
+                "race_complete_count": race_completions,
+                "collision_rate_per_completed_episode": (
+                    collisions / completed_episodes if completed_episodes else 0.0
+                ),
+                "off_track_rate_per_completed_episode": (
+                    off_tracks / completed_episodes if completed_episodes else 0.0
+                ),
+                "race_completion_rate": (
+                    race_completions / completed_episodes
+                    if completed_episodes
+                    else 0.0
+                ),
+                "terminated_count": terminations,
+                "truncated_count": truncations,
                 "environment_transitions_per_second": (
                     session_environment_transitions / elapsed
                 ),
@@ -604,6 +648,10 @@ def train_lidar_sac(
                 )
             append_jsonl(metrics_path, record)
             reward_window = jnp.asarray(0.0, dtype=jnp.float32)
+            progress_window = jnp.asarray(0.0, dtype=jnp.float32)
+            collision_window = jnp.asarray(0, dtype=jnp.int32)
+            off_track_window = jnp.asarray(0, dtype=jnp.int32)
+            race_complete_window = jnp.asarray(0, dtype=jnp.int32)
             terminated_window = jnp.asarray(0, dtype=jnp.int32)
             truncated_window = jnp.asarray(0, dtype=jnp.int32)
             window_transitions = 0

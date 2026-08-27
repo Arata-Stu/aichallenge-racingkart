@@ -204,6 +204,22 @@ class SACSourceContractTest(unittest.TestCase):
         self.assertIn("keep_last: 20", agent_config)
         self.assertIn("num_envs: 64", environment_config)
 
+    def test_training_metrics_report_progress_separately_from_reward(self) -> None:
+        source = (SAC_ROOT / "trainer.py").read_text(encoding="utf-8")
+
+        for metric in (
+            "mean_course_progress_meters_per_transition",
+            "mean_course_progress_fraction_per_transition",
+            "course_progress_meters_per_simulated_second",
+            "collision_rate_per_completed_episode",
+            "off_track_rate_per_completed_episode",
+            "race_completion_rate",
+        ):
+            with self.subTest(metric=metric):
+                self.assertIn(f'"{metric}"', source)
+        self.assertIn("result.diagnostics.progress_delta", source)
+        self.assertIn("result.diagnostics.race_complete", source)
+
     def test_train_and_export_clis_fail_closed_on_v1_model_shape(self) -> None:
         required_paths = (
             "agent.actor.encoder.channels",

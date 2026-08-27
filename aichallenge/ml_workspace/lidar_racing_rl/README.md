@@ -198,6 +198,8 @@ checkpointにはReplay Bufferと環境状態を含めません。再開時はAct
 
 既定の64並列環境では1 collectionごとに64 transitionを追加するため、`updates_per_collection: 64`でupdate-to-data比を1にします。`1`では比率が`1/64`となり、教師warmup後のActor学習が収集に対して不足します。`env.num_envs`を変更する場合は、この値も同じ比率になるよう調整してください。本学習は既定で100万transitionです。約5万learner updateごとにcheckpointを保存して20世代を保持し、終盤に方策が退行しても途中の候補を評価できるようにします。
 
+学習ログは報酬とは別に、1 transitionあたりのコース進捗（m・周回比）、シミュレーション時間あたりの進捗（m/s）、完了episodeに対する完走・コースアウト・衝突率を記録します。報酬が改善していても進捗が停滞していないか、逆にペナルティで報酬が低くても走行距離が伸びているかを分けて判断します。
+
 smokeでNaNなし、Replay sample、Actor/Critic更新、checkpoint保存・warm restart、決定論評価、Flax/PyTorch parityを確認してから、`--max-transitions`を外してStep 1本学習へ進みます。Step 2のsourceには相対進行、passヒステリシス、安全接触、追従停滞の報酬と評価指標まで接続済みですが、実行はStep 1成立、4台rollout、NPC安全性をUbuntu上で確認してから行ってください。
 
 export済みbundleはchecksumを検証してROS 2パッケージへ配置します。既存modelの置換は明示的に`LIDAR_RL_INSTALL_ARGS=--force`を指定します。
