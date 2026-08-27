@@ -115,12 +115,14 @@ class TanhGaussianActor(nn.Module):
             self.action_dim,
             dtype=jnp.float32,
             param_dtype=jnp.float32,
+            precision=jax.lax.Precision.HIGHEST,
             name="mean_head",
         )
         self.log_std_head = nn.Dense(
             self.action_dim,
             dtype=jnp.float32,
             param_dtype=jnp.float32,
+            precision=jax.lax.Precision.HIGHEST,
             name="log_std_head",
         )
 

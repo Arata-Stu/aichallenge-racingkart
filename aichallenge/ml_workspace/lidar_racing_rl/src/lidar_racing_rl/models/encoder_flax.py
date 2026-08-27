@@ -75,6 +75,7 @@ class LidarEncoder(nn.Module):
                 padding="VALID",
                 dtype=jnp.float32,
                 param_dtype=jnp.float32,
+                precision=jax.lax.Precision.HIGHEST,
                 name=f"conv_{index}",
             )
             for index, (channels, kernel_size, stride) in enumerate(
@@ -85,6 +86,7 @@ class LidarEncoder(nn.Module):
             self.feature_dim,
             dtype=jnp.float32,
             param_dtype=jnp.float32,
+            precision=jax.lax.Precision.HIGHEST,
             name="dense",
         )
 

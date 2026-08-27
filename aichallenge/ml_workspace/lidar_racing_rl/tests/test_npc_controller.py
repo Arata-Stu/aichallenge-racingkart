@@ -127,8 +127,15 @@ def test_controller_is_vmap_compatible_and_parameters_change_commands() -> None:
         npc_count=3,
         max_control_delay_steps=2,
     )
-    batched_states = jnp.stack((all_states, all_states.at[:, 3].set(2.0)))
-    batched_parameters = jax.tree.map(lambda value: jnp.stack((value, value)), parameters)
+    lower_gain_parameters = parameters.replace(
+        acceleration_gain=parameters.acceleration_gain * 0.1,
+    )
+    batched_states = jnp.stack((all_states, all_states))
+    batched_parameters = jax.tree.map(
+        lambda first, second: jnp.stack((first, second)),
+        parameters,
+        lower_gain_parameters,
+    )
     batched_controller_state = jax.tree.map(
         lambda value: jnp.stack((value, value)),
         state,

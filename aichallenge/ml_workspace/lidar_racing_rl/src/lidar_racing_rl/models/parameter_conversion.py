@@ -12,6 +12,12 @@ from typing import Any
 import numpy as np
 
 
+def _writable_contiguous(array: Any) -> np.ndarray:
+    """Return an owned C-order array safe for ``torch.from_numpy``."""
+
+    return np.array(array, copy=True, order="C")
+
+
 def _unwrap_params(variables: Mapping[str, Any]) -> Mapping[str, Any]:
     params = variables.get("params", variables)
     if not isinstance(params, Mapping):
@@ -64,10 +70,10 @@ def flax_actor_to_torch_state_dict(variables: Mapping[str, Any]) -> OrderedDict[
             raise ValueError(f"unexpected Flax shape at encoder/conv_{index}")
         torch_index = 2 * index
         converted[f"encoder.{torch_index}.weight"] = torch.from_numpy(
-            np.ascontiguousarray(kernel.transpose(2, 1, 0))
+            _writable_contiguous(kernel.transpose(2, 1, 0))
         )
         converted[f"encoder.{torch_index}.bias"] = torch.from_numpy(
-            np.ascontiguousarray(bias)
+            _writable_contiguous(bias)
         )
 
     dense = _layer(encoder, "dense")
@@ -76,9 +82,9 @@ def flax_actor_to_torch_state_dict(variables: Mapping[str, Any]) -> OrderedDict[
     if dense_kernel.shape != (2624, 256) or dense_bias.shape != (256,):
         raise ValueError("unexpected Flax shape at encoder/dense")
     converted["trunk.1.weight"] = torch.from_numpy(
-        np.ascontiguousarray(dense_kernel.transpose(1, 0))
+        _writable_contiguous(dense_kernel.transpose(1, 0))
     )
-    converted["trunk.1.bias"] = torch.from_numpy(np.ascontiguousarray(dense_bias))
+    converted["trunk.1.bias"] = torch.from_numpy(_writable_contiguous(dense_bias))
 
     for flax_name, torch_name in (
         ("mean_head", "mean_head"),
@@ -90,9 +96,11 @@ def flax_actor_to_torch_state_dict(variables: Mapping[str, Any]) -> OrderedDict[
         if kernel.shape != (256, 2) or bias.shape != (2,):
             raise ValueError(f"unexpected Flax shape at {flax_name}")
         converted[f"{torch_name}.weight"] = torch.from_numpy(
-            np.ascontiguousarray(kernel.transpose(1, 0))
+            _writable_contiguous(kernel.transpose(1, 0))
         )
-        converted[f"{torch_name}.bias"] = torch.from_numpy(np.ascontiguousarray(bias))
+        converted[f"{torch_name}.bias"] = torch.from_numpy(
+            _writable_contiguous(bias)
+        )
     return converted
 
 

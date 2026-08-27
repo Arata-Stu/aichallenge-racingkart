@@ -86,6 +86,28 @@ class FlaxModelSourceContractTest(unittest.TestCase):
         self.assertIn("tanh", called_attributes)
         self.assertIn("normal", called_attributes)
 
+    def test_exported_actor_uses_highest_gpu_matmul_precision(self) -> None:
+        for filename in ("encoder_flax.py", "actor_flax.py"):
+            tree = _tree(filename)
+            layer_calls = [
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in {"Conv", "Dense"}
+            ]
+            self.assertGreater(len(layer_calls), 0)
+            for call in layer_calls:
+                precision = next(
+                    (keyword.value for keyword in call.keywords if keyword.arg == "precision"),
+                    None,
+                )
+                self.assertIsNotNone(precision)
+                self.assertEqual(
+                    ast.unparse(precision),
+                    "jax.lax.Precision.HIGHEST",
+                )
+
     def test_twin_q_encoders_are_independent_and_named(self) -> None:
         tree = _tree("critic_flax.py")
         values = _literal_assignments(tree)
