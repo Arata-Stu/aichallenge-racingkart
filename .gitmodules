@@ -1,0 +1,3 @@
+[submodule "aichallenge/ml_workspace/lidar_racing_rl/repos/f1tenth_gym_jax"]
+	path = aichallenge/ml_workspace/lidar_racing_rl/repos/f1tenth_gym_jax
+	url = https://github.com/Arata-Stu/f1tenth_gym_jax.git
