@@ -14,7 +14,10 @@ from flax import struct
 from lidar_racing_rl.npc.longitudinal_control import (
     limit_speed_for_leading_vehicle,
 )
-from lidar_racing_rl.npc.pure_pursuit import pure_pursuit_actions
+from lidar_racing_rl.npc.pure_pursuit import (
+    ordered_braking_target_speeds,
+    pure_pursuit_actions,
+)
 from lidar_racing_rl.npc.randomization import (
     NpcEpisodeParameters,
     apply_braking_event,
@@ -97,37 +100,6 @@ def _validate_shapes(
         )
 
 
-def _selected_waypoint_target_speed(
-    npc_states: jax.Array,
-    waypoint_lines: jax.Array,
-    lookahead: jax.Array,
-    speed_multiplier: jax.Array,
-) -> jax.Array:
-    """Match Pure Pursuit's target selection and return ``[npcs]`` speeds."""
-
-    offsets = waypoint_lines[..., 0:2] - npc_states[:, None, 0:2]
-    yaw = npc_states[:, 4:5]
-    local_x = offsets[..., 0] * jnp.cos(yaw) + offsets[..., 1] * jnp.sin(yaw)
-    local_y = -offsets[..., 0] * jnp.sin(yaw) + offsets[..., 1] * jnp.cos(yaw)
-    distances = jnp.hypot(local_x, local_y)
-
-    forward = local_x > 0.0
-    forward_score = jnp.where(
-        forward,
-        jnp.abs(distances - lookahead[:, None]),
-        jnp.inf,
-    )
-    forward_index = jnp.argmin(forward_score, axis=1)
-    nearest_index = jnp.argmin(distances, axis=1)
-    target_index = jnp.where(jnp.any(forward, axis=1), forward_index, nearest_index)
-    target_speed = jnp.take_along_axis(
-        waypoint_lines[..., 2],
-        target_index[:, None],
-        axis=1,
-    )[:, 0]
-    return target_speed * speed_multiplier
-
-
 def npc_controller_step(
     all_vehicle_states: jax.Array,
     base_waypoints: jax.Array,
@@ -193,11 +165,11 @@ def npc_controller_step(
         acceleration_max=acceleration_max,
     )
 
-    waypoint_target_speed = _selected_waypoint_target_speed(
+    waypoint_target_speed = ordered_braking_target_speeds(
         npc_states,
         waypoint_lines,
-        parameters.lookahead,
         parameters.speed_multiplier,
+        maximum_deceleration=abs(acceleration_min),
     )
     safe_target_speed = limit_speed_for_leading_vehicle(
         npc_states,

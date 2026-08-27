@@ -11,6 +11,61 @@ import jax
 import jax.numpy as jnp
 
 
+def ordered_braking_target_speeds(
+    cartesian_states: jax.Array,
+    vehicle_waypoints: jax.Array,
+    speed_multiplier: jax.Array,
+    *,
+    maximum_deceleration: float,
+) -> jax.Array:
+    """Return speeds that can brake for every upcoming ordered speed limit."""
+
+    vehicle_count = cartesian_states.shape[0]
+    if vehicle_waypoints.ndim != 3 or vehicle_waypoints.shape[0] != vehicle_count:
+        raise ValueError("vehicle_waypoints must have shape [vehicles, waypoints, 3+]")
+    if speed_multiplier.shape != (vehicle_count,):
+        raise ValueError("speed_multiplier must have shape [vehicles]")
+    if maximum_deceleration <= 0.0:
+        raise ValueError("maximum_deceleration must be positive")
+
+    offsets = vehicle_waypoints[..., 0:2] - cartesian_states[:, None, 0:2]
+    distances = jnp.linalg.norm(offsets, axis=-1)
+    nearest_index = jnp.argmin(distances, axis=1)
+    waypoint_count = vehicle_waypoints.shape[1]
+    ordered_indices = (
+        nearest_index[:, None] + jnp.arange(waypoint_count)[None, :]
+    ) % waypoint_count
+    ordered_xy = jnp.take_along_axis(
+        vehicle_waypoints[..., 0:2],
+        ordered_indices[..., None],
+        axis=1,
+    )
+    ordered_speed = jnp.take_along_axis(
+        vehicle_waypoints[..., 2],
+        ordered_indices,
+        axis=1,
+    ) * speed_multiplier[:, None]
+    first_distance = jnp.linalg.norm(
+        ordered_xy[:, 0] - cartesian_states[:, 0:2], axis=-1
+    )
+    segment_lengths = jnp.linalg.norm(jnp.diff(ordered_xy, axis=1), axis=-1)
+    path_distances = jnp.concatenate(
+        (
+            first_distance[:, None],
+            first_distance[:, None] + jnp.cumsum(segment_lengths, axis=1),
+        ),
+        axis=1,
+    )
+    feasible_speed = jnp.sqrt(
+        jnp.maximum(
+            jnp.square(ordered_speed)
+            + 2.0 * maximum_deceleration * path_distances,
+            0.0,
+        )
+    )
+    return jnp.min(feasible_speed, axis=1)
+
+
 def pure_pursuit_actions(
     cartesian_states: jax.Array,
     waypoints: jax.Array,
@@ -128,10 +183,16 @@ def pure_pursuit_actions(
     steering = jnp.arctan(wheelbase * curvature)
     steering = jnp.clip(steering, steering_min, steering_max)
 
-    waypoint_speed = jnp.take_along_axis(
-        vehicle_waypoints[..., 2], target_index[:, None], axis=1
-    )[:, 0] * speed_multiplier
+    waypoint_speed = ordered_braking_target_speeds(
+        cartesian_states,
+        vehicle_waypoints,
+        speed_multiplier,
+        maximum_deceleration=abs(acceleration_min),
+    )
     acceleration = (waypoint_speed - cartesian_states[:, 3]) / control_dt
     acceleration = jnp.clip(acceleration, acceleration_min, acceleration_max)
 
     return jnp.stack((steering, acceleration), axis=-1)
+
+
+__all__ = ["ordered_braking_target_speeds", "pure_pursuit_actions"]

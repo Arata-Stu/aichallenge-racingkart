@@ -7,7 +7,10 @@ import numpy as np
 from lidar_racing_rl.npc.longitudinal_control import (
     limit_speed_for_leading_vehicle,
 )
-from lidar_racing_rl.npc.pure_pursuit import pure_pursuit_actions
+from lidar_racing_rl.npc.pure_pursuit import (
+    ordered_braking_target_speeds,
+    pure_pursuit_actions,
+)
 
 
 def test_pure_pursuit_is_vmap_compatible() -> None:
@@ -102,6 +105,30 @@ def test_pure_pursuit_does_not_jump_to_a_nearby_later_track_segment() -> None:
     )
 
     np.testing.assert_allclose(action[0, 0], 0.0, atol=1.0e-6)
+
+
+def test_speed_planner_brakes_before_an_upcoming_corner_limit() -> None:
+    state = jnp.array([[0.0, 0.0, 0.0, 8.0, 0.0]])
+    waypoints = jnp.array(
+        [
+            [
+                [0.0, 0.0, 8.0],
+                [1.0, 0.0, 8.0],
+                [2.0, 0.0, 3.0],
+                [3.0, 0.0, 3.0],
+            ]
+        ]
+    )
+
+    target = ordered_braking_target_speeds(
+        state,
+        waypoints,
+        jnp.ones((1,)),
+        maximum_deceleration=9.51,
+    )
+
+    expected = np.sqrt(3.0**2 + 2.0 * 9.51 * 2.0)
+    np.testing.assert_allclose(target, jnp.array([expected]), rtol=1.0e-6)
 
 
 def test_following_controller_slows_for_leader() -> None:
