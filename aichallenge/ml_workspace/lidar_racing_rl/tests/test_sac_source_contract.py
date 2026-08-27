@@ -207,7 +207,7 @@ class SACSourceContractTest(unittest.TestCase):
         self.assertIn("actor_learning_rate: 0.0001", agent_config)
         self.assertIn("critic_learning_rate: 0.0001", agent_config)
         self.assertIn("temperature_learning_rate: 0.0001", agent_config)
-        self.assertIn("capacity: 250000", agent_config)
+        self.assertIn("capacity: 150000", agent_config)
         self.assertIn("warmup_transitions: 50000", agent_config)
         self.assertIn("save_interval_updates: 50000", agent_config)
         self.assertIn("keep_last: 20", agent_config)

@@ -54,9 +54,10 @@ update:
 
 replay_buffer:
   implementation: jax_ring
-  # Measured allocation is about 1.15 GB (1.07 GiB) per 100k entries.  250k
-  # keeps more diversity while leaving headroom on an 8 GiB RTX 4060.
-  capacity: 250000
+  # Measured allocation is about 1.15 GB (1.07 GiB) per 100k entries.  A 250k
+  # buffer requires a contiguous 1.34 GiB observation array and OOMs on the
+  # 8 GiB RTX 4060 during XLA initialization; 150k retains safe headroom.
+  capacity: 150000
   warmup_transitions: 50000
   observation_storage_dtype: float16
   store_fields: [observation, action, reward, terminated, truncated, next_observation]
