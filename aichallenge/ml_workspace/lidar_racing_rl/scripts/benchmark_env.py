@@ -114,7 +114,7 @@ def _validate_benchmark_config(config: Any) -> list[str]:
     if "npc_controller" not in allowed_gt_consumers:
         errors.append("benchmark NPC control requires npc_controller GT permission")
     if _select(config, "npc.lateral_controller.reference_line") != "centerline":
-        errors.append("full-size kart NPCs require a centerline reference")
+        errors.append("NPCs require a centerline reference")
     npc_base_speed = _select(config, "npc.longitudinal_controller.base_target_speed")
     if not _is_finite_number(npc_base_speed) or npc_base_speed <= 0.0:
         errors.append("NPC base_target_speed must be finite and positive")

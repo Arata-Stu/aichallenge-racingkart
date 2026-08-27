@@ -2,7 +2,7 @@
 
 defaults:
   - /env: base
-  - /vehicle: aichallenge_kart
+  - /vehicle: f1tenth_nominal
   - /agent: sac
   - _self_
 

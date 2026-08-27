@@ -237,7 +237,7 @@ def _validate_config(config: Any) -> tuple[list[str], list[str]]:
     if _select(config, "training.require_clean_repositories") is not True:
         errors.append("training.require_clean_repositories must remain true for truthful SHAs")
     if _select(config, "teacher.reference_line") != "centerline":
-        errors.append("full-size kart training requires teacher.reference_line=centerline")
+        errors.append("training requires teacher.reference_line=centerline")
     teacher_base_speed = _select(config, "teacher.base_target_speed")
     if not _is_finite_number(teacher_base_speed) or teacher_base_speed <= 0.0:
         errors.append("teacher.base_target_speed must be finite and positive")
@@ -246,7 +246,7 @@ def _validate_config(config: Any) -> tuple[list[str], list[str]]:
         errors.append("vehicle.vehicle.width must be finite and positive")
     if stage == "step2":
         if _select(config, "npc.lateral_controller.reference_line") != "centerline":
-            errors.append("full-size kart NPCs require a centerline reference")
+            errors.append("NPCs require a centerline reference")
         npc_base_speed = _select(
             config,
             "npc.longitudinal_controller.base_target_speed",
@@ -263,7 +263,13 @@ def _validate_config(config: Any) -> tuple[list[str], list[str]]:
             or lateral_min > lateral_max
         ):
             errors.append("NPC lateral_offset bounds must be finite and ordered")
-    if _select(config, "vehicle.awsim_identification.steering_gain") is None:
+    vehicle_profile = _select(config, "vehicle.profile")
+    if vehicle_profile not in {"f1tenth_nominal", "aichallenge_kart"}:
+        errors.append("vehicle.profile must identify the simulator geometry")
+    if (
+        vehicle_profile == "aichallenge_kart"
+        and _select(config, "vehicle.awsim_identification.steering_gain") is None
+    ):
         warnings.append("AWSIM vehicle identification values remain uncalibrated")
     if _select(config, "env.domain_randomization.requires_awsim_calibration") is True:
         warnings.append("domain randomization requires measured AWSIM calibration data")

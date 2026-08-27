@@ -98,7 +98,7 @@ def _validate_config(config: Any) -> list[str]:
     if _select(config, "training.ego_agent_index") != 0:
         errors.append("evaluation supports learned agent_0 only")
     if _select(config, "teacher.reference_line") != "centerline":
-        errors.append("full-size kart evaluation requires teacher.reference_line=centerline")
+        errors.append("evaluation requires teacher.reference_line=centerline")
     teacher_base_speed = _select(config, "teacher.base_target_speed")
     if not _is_finite_number(teacher_base_speed) or teacher_base_speed <= 0.0:
         errors.append("teacher.base_target_speed must be finite and positive")
@@ -107,7 +107,7 @@ def _validate_config(config: Any) -> list[str]:
         errors.append("vehicle.vehicle.width must be finite and positive")
     if stage == "step2":
         if _select(config, "npc.lateral_controller.reference_line") != "centerline":
-            errors.append("full-size kart NPCs require a centerline reference")
+            errors.append("NPCs require a centerline reference")
         npc_base_speed = _select(
             config,
             "npc.longitudinal_controller.base_target_speed",

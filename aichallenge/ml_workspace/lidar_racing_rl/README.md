@@ -122,7 +122,7 @@ macOSではCPUコンテナによる静的・軽量確認だけを想定します
 
 ## 単独Pure Pursuit rollout
 
-`run_single_rollout.py`は既定で`simulator.track.centerline`からPure Pursuit actionを毎step計算します。F1TENTH既定racelineはSpielbergの境界へ寄りすぎ、幅1.45 mのカートには安全な基準線ではないため使用しません。NPCの横offsetもコース幅と車体幅から得る余裕内か実行前に検証します。GT poseは許可された教師・NPC制御だけに使用し、環境wrapperが返すActor観測はLiDARだけです。教師を選んだのに車両が動かない場合や非有限値が出た場合も成功扱いにしません。
+`run_single_rollout.py`は既定で`simulator.track.centerline`からPure Pursuit actionを毎step計算します。Spielbergでの初期学習にはF1TENTH Gym JAX既定車両寸法を使い、AWSIMの実寸車両とは設定を分離します。NPCの横offsetもコース幅と車体幅から得る余裕内か実行前に検証します。GT poseは許可された教師・NPC制御だけに使用し、環境wrapperが返すActor観測はLiDARだけです。教師を選んだのに車両が動かない場合や非有限値が出た場合も成功扱いにしません。
 
 setup完了後、CPU専用コンテナで実行します。
 
@@ -292,10 +292,11 @@ CONTROL_METHOD=lidar_racing make eval
 - `configs/train/step1_single_vehicle.yaml`: 単車両LiDAR-only学習
 - `configs/train/step2_four_vehicle.yaml`: Ego 1台とPure Pursuit NPC 3台
 - `configs/env/`: canonical scan、動的車両LiDAR、将来のdomain randomization契約
+- `configs/vehicle/f1tenth_nominal.yaml`: Spielberg初期学習用の既定F1TENTH車両
 - `configs/vehicle/aichallenge_kart.yaml`: 車両寸法とAWSIM同定値
 - `configs/npc/pure_pursuit.yaml`: NPC横・縦制御と多様化
 - `configs/agent/sac.yaml`: LiDAR-only SAC契約
-- `configs/deployment/awsim.yaml`: AWSIMトピック、前処理、フェイルセーフ
+- `configs/deployment/awsim.yaml`: AWSIMトピック、実車action上限、前処理、フェイルセーフ
 
 設定値に`null`が残る項目はAWSIM rosbagによる同定が必要です。推測値のまま本番設定として確定しないでください。
 

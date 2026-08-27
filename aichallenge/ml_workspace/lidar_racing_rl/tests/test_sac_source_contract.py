@@ -270,6 +270,33 @@ class SACSourceContractTest(unittest.TestCase):
             with self.subTest(filename=filename):
                 self.assertTrue(source.startswith("# @package _global_\n"))
 
+    def test_spielberg_training_uses_nominal_f1tenth_geometry(self) -> None:
+        profile = (
+            PROJECT_ROOT / "configs" / "vehicle" / "f1tenth_nominal.yaml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("profile: f1tenth_nominal", profile)
+        self.assertIn("length: 0.58", profile)
+        self.assertIn("width: 0.31", profile)
+        self.assertIn("wheelbase: 0.3302", profile)
+        for filename in ("step1_single_vehicle.yaml", "step2_four_vehicle.yaml"):
+            source = (
+                PROJECT_ROOT / "configs" / "train" / filename
+            ).read_text(encoding="utf-8")
+            with self.subTest(filename=filename):
+                self.assertIn("/vehicle: f1tenth_nominal", source)
+
+    def test_awsim_action_limits_are_separate_from_training_geometry(self) -> None:
+        deployment = (
+            PROJECT_ROOT / "configs" / "deployment" / "awsim.yaml"
+        ).read_text(encoding="utf-8")
+        exporter = (
+            PROJECT_ROOT / "src" / "lidar_racing_rl" / "export" / "export_policy.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("steering_max_abs: 0.64", deployment)
+        self.assertIn("acceleration_min: -3.2", deployment)
+        self.assertIn("acceleration_max: 3.2", deployment)
+        self.assertIn('_value(deployment_config, "control")', exporter)
+
     def test_action_steering_limit_matches_authoritative_vehicle_metadata(self) -> None:
         repository_root = PROJECT_ROOT.parents[2]
         source_paths = (

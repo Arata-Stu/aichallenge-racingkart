@@ -27,6 +27,9 @@ preprocessing:
 
 control:
   rate_hz: 20.0
+  steering_max_abs: 0.64
+  acceleration_min: -3.2
+  acceleration_max: 3.2
   steering_rate_limit: null
   acceleration_rate_limit: null
 

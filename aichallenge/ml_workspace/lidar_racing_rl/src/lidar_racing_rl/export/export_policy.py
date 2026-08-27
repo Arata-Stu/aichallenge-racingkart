@@ -113,8 +113,8 @@ def export_policy_bundle(
         shutil.copyfile(resolved_checkpoint / ACTOR_FILENAME, flax_path)
         save_torch_state_dict(torch_path, torch_actor.state_dict())
 
-        vehicle = _value(training_config, "vehicle", "vehicle")
         preprocessing = _value(deployment_config, "preprocessing")
+        control = _value(deployment_config, "control")
         manifest = build_policy_manifest(
             model_checksum_sha256=sha256_file(torch_path),
             training_config_hash=checkpoint_metadata.config_sha256,
@@ -125,9 +125,9 @@ def export_policy_bundle(
             scan_channels=len(tuple(_value(preprocessing, "channels"))),
             field_of_view=float(_value(preprocessing, "field_of_view")),
             range_max=float(_value(preprocessing, "expected_range_max")),
-            steering_max_abs=float(_value(vehicle, "max_steering_angle")),
-            acceleration_min=float(_value(vehicle, "min_acceleration")),
-            acceleration_max=float(_value(vehicle, "max_acceleration")),
+            steering_max_abs=float(_value(control, "steering_max_abs")),
+            acceleration_min=float(_value(control, "acceleration_min")),
+            acceleration_max=float(_value(control, "acceleration_max")),
         )
         manifest["conversion"] = {
             "parity_batch_size": parity_batch_size,

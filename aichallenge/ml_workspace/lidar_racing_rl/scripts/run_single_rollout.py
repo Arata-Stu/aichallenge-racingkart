@@ -163,7 +163,7 @@ def _validate_config(
         errors.append("Pure Pursuit Ego control requires teacher_policy GT permission")
     if action_source == "pure-pursuit":
         if _select(config, "teacher.reference_line") != "centerline":
-            errors.append("full-size kart teacher requires teacher.reference_line=centerline")
+            errors.append("teacher requires teacher.reference_line=centerline")
         for path in (
             "teacher.base_target_speed",
             "teacher.lookahead",
@@ -178,7 +178,7 @@ def _validate_config(
         if _select(config, "npc.learned") is not False:
             errors.append("rollout NPCs must remain fixed policies")
         if _select(config, "npc.lateral_controller.reference_line") != "centerline":
-            errors.append("full-size kart NPCs require a centerline reference")
+            errors.append("NPCs require a centerline reference")
         npc_base_speed = _select(
             config,
             "npc.longitudinal_controller.base_target_speed",

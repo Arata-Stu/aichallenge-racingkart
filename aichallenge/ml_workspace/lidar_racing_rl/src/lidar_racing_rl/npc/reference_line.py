@@ -63,15 +63,13 @@ def build_reference_waypoints(
 ) -> jnp.ndarray:
     """Build ``[waypoints, x/y/speed]`` from the configured track line.
 
-    The initial AI Challenge kart contract deliberately supports only the
-    track centerline. F1TENTH's optimized raceline approaches the 2.2 m-wide
-    Spielberg boundary closely enough that a 1.45 m-wide kart starts outside
-    the usable footprint. Per-NPC diversity is added later by the bounded
-    lateral-offset transform.
+    The initial training contract deliberately supports only the track
+    centerline. Per-NPC diversity is added later by the bounded lateral-offset
+    transform; AWSIM transfer uses a separately calibrated vehicle profile.
     """
 
     if reference_line != "centerline":
-        raise ValueError("initial full-size kart contract requires reference_line=centerline")
+        raise ValueError("initial training contract requires reference_line=centerline")
     if not math.isfinite(base_target_speed) or base_target_speed <= 0.0:
         raise ValueError("base_target_speed must be finite and positive")
     try:

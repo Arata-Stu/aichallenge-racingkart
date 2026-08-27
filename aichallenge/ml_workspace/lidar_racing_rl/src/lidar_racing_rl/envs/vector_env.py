@@ -442,8 +442,8 @@ class LidarRacingEnv:
             )
         else:
             # The upstream single-agent reset widens its configured lateral
-            # jitter by 1.5.  With a full-size kart this can place the vehicle
-            # body outside a narrow centerline boundary at episode start.
+            # jitter by 1.5, so it can violate the project's explicit reset
+            # envelope even when the nominal vehicle fits the track.
             # Use the explicit fork reset API so the saved project settings are
             # the only source of reset jitter for every training stage.
             anchor_key, lateral_key, heading_key = jax.random.split(

@@ -1,0 +1,27 @@
+profile: f1tenth_nominal
+
+# Canonical F1TENTH Gym JAX vehicle used with the bundled Spielberg map.
+# Deployment limits remain independently defined in deployment/awsim.yaml.
+vehicle:
+  length: 0.58
+  width: 0.31
+  wheelbase: 0.3302
+  max_acceleration: 9.51
+  min_acceleration: -9.51
+  max_steering_angle: 0.4189
+  min_steering_angle: -0.4189
+  min_velocity: -5.0
+  max_velocity: 20.0
+  front_axle_distance: 0.15875
+  rear_axle_distance: 0.17145
+
+awsim_identification:
+  calibration_file: assets/calibration/awsim_vehicle_model.yaml
+  steering_gain: null
+  steering_time_constant: null
+  steering_delay: null
+  acceleration_gain: null
+  acceleration_delay: null
+  effective_wheelbase: null
+  velocity_drag: null
+  effective_friction: null

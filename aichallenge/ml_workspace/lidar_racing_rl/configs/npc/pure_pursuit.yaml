@@ -19,9 +19,7 @@ longitudinal_controller:
 randomization:
   waypoint_line: true
   speed_multiplier: {min: 0.65, max: 1.05}
-  # The full-size kart has only 0.375 m center clearance on Spielberg's
-  # 2.2 m-wide track. Preserve line diversity without using the small-car
-  # raceline offsets from the upstream examples.
+  # Keep bounded line diversity within the bundled Spielberg centerline.
   lateral_offset: {min: -0.2, max: 0.2}
   lookahead: {min: 1.5, max: 4.0}
   steering_gain: {min: 0.9, max: 1.1}
