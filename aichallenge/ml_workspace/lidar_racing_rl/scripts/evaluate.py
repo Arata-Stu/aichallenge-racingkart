@@ -70,6 +70,9 @@ def _validate_config(config: Any) -> list[str]:
         "agent.actor.deterministic_evaluation",
         "teacher.reference_line",
         "teacher.base_target_speed",
+        "teacher.speed_profile.type",
+        "teacher.speed_profile.minimum_corner_speed",
+        "teacher.speed_profile.maximum_lateral_acceleration",
         "vehicle.vehicle.width",
     )
     for path in required_paths:
@@ -99,6 +102,8 @@ def _validate_config(config: Any) -> list[str]:
         errors.append("evaluation supports learned agent_0 only")
     if _select(config, "teacher.reference_line") != "centerline":
         errors.append("evaluation requires teacher.reference_line=centerline")
+    if _select(config, "teacher.speed_profile.type") != "curvature_limited":
+        errors.append("teacher.speed_profile.type must be curvature_limited")
     teacher_base_speed = _select(config, "teacher.base_target_speed")
     if not _is_finite_number(teacher_base_speed) or teacher_base_speed <= 0.0:
         errors.append("teacher.base_target_speed must be finite and positive")

@@ -81,6 +81,9 @@ def _validate_config(config: Any) -> tuple[list[str], list[str]]:
         "training.require_clean_repositories",
         "teacher.reference_line",
         "teacher.base_target_speed",
+        "teacher.speed_profile.type",
+        "teacher.speed_profile.minimum_corner_speed",
+        "teacher.speed_profile.maximum_lateral_acceleration",
         "teacher.normalized_action_noise_std",
         "vehicle.vehicle.width",
     )
@@ -241,6 +244,20 @@ def _validate_config(config: Any) -> tuple[list[str], list[str]]:
     teacher_base_speed = _select(config, "teacher.base_target_speed")
     if not _is_finite_number(teacher_base_speed) or teacher_base_speed <= 0.0:
         errors.append("teacher.base_target_speed must be finite and positive")
+    corner_speed = _select(config, "teacher.speed_profile.minimum_corner_speed")
+    lateral_acceleration = _select(
+        config, "teacher.speed_profile.maximum_lateral_acceleration"
+    )
+    if _select(config, "teacher.speed_profile.type") != "curvature_limited":
+        errors.append("teacher.speed_profile.type must be curvature_limited")
+    if (
+        not _is_finite_number(corner_speed)
+        or not _is_finite_number(teacher_base_speed)
+        or not 0.0 < corner_speed <= teacher_base_speed
+    ):
+        errors.append("teacher corner speed must be within (0, base_target_speed]")
+    if not _is_finite_number(lateral_acceleration) or lateral_acceleration <= 0.0:
+        errors.append("teacher maximum lateral acceleration must be positive")
     vehicle_width = _select(config, "vehicle.vehicle.width")
     if not _is_finite_number(vehicle_width) or vehicle_width <= 0.0:
         errors.append("vehicle.vehicle.width must be finite and positive")

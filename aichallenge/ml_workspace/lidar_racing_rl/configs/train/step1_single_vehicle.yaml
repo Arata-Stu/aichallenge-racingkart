@@ -37,8 +37,12 @@ teacher:
   type: pure_pursuit
   reference_line: centerline
   base_target_speed: 8.0
-  lookahead: 2.5
-  speed_multiplier: 0.8
+  lookahead: 1.0
+  speed_multiplier: 1.0
+  speed_profile:
+    type: curvature_limited
+    minimum_corner_speed: 3.0
+    maximum_lateral_acceleration: 3.0
   normalized_action_noise_std: 0.1
 
 reward:

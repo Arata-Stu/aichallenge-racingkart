@@ -88,6 +88,9 @@ def _validate_benchmark_config(config: Any) -> list[str]:
         "reward.weights.collision",
         "npc.lateral_controller.reference_line",
         "npc.longitudinal_controller.base_target_speed",
+        "teacher.speed_profile.type",
+        "teacher.speed_profile.minimum_corner_speed",
+        "teacher.speed_profile.maximum_lateral_acceleration",
     )
     for path in required_paths:
         if _select(config, path) is None:
@@ -102,6 +105,8 @@ def _validate_benchmark_config(config: Any) -> list[str]:
         errors.append("blueprint benchmark requires env.lidar.num_beams=360")
     if _select(config, "env.information_boundary.actor_critic_gt_access") is not False:
         errors.append("Actor/Critic GT access must remain disabled")
+    if _select(config, "teacher.speed_profile.type") != "curvature_limited":
+        errors.append("teacher.speed_profile.type must be curvature_limited")
     if _select(config, "npc.count") != 3:
         errors.append("four-vehicle benchmark requires npc.count=3")
     if _select(config, "npc.learned") is not False:
@@ -290,6 +295,12 @@ def _run_benchmark(config: Any, *, steps: int, seed: int) -> dict[str, Any]:
         reference_line=str(config.npc.lateral_controller.reference_line),
         base_target_speed=float(
             config.npc.longitudinal_controller.base_target_speed
+        ),
+        minimum_corner_speed=float(
+            config.teacher.speed_profile.minimum_corner_speed
+        ),
+        maximum_lateral_acceleration=float(
+            config.teacher.speed_profile.maximum_lateral_acceleration
         ),
     )
 

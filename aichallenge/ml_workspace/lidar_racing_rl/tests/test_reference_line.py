@@ -1,4 +1,4 @@
-"""Reference-line contract tests for the full-size AI Challenge kart."""
+"""Reference-line contracts for F1TENTH training and AWSIM transfer."""
 
 from __future__ import annotations
 
@@ -45,6 +45,23 @@ def test_unsafe_f1tenth_raceline_is_not_silently_selected() -> None:
             reference_line="raceline",
             base_target_speed=8.0,
         )
+
+
+def test_curvature_speed_profile_is_fast_on_straights_and_slow_in_corners() -> None:
+    simulator = _simulator()
+    simulator.track.centerline.s = jnp.asarray([0.0, 1.0, 2.0])
+    curvatures = {0.0: 0.0, 1.0: 1.0 / 3.0, 2.0: 1.0}
+    simulator.track.centerline.calc_curvature = lambda value: curvatures[value]
+
+    waypoints = build_reference_waypoints(
+        simulator,
+        reference_line="centerline",
+        base_target_speed=8.0,
+        minimum_corner_speed=3.0,
+        maximum_lateral_acceleration=3.0,
+    )
+
+    assert waypoints[:, 2].tolist() == pytest.approx([8.0, 3.0, 3.0])
 
 
 def test_full_size_kart_offset_is_checked_against_track_width() -> None:

@@ -107,11 +107,16 @@ def evaluate_lidar_policy(
     )
     environment = LidarRacingEnv(simulator, settings, corruption)
     teacher_config = _value(config, "teacher")
+    speed_profile = _value(teacher_config, "speed_profile")
     vehicle = _value(config, "vehicle", "vehicle")
     waypoints = build_reference_waypoints(
         simulator,
         reference_line=str(_value(teacher_config, "reference_line")),
         base_target_speed=float(_value(teacher_config, "base_target_speed")),
+        minimum_corner_speed=float(_value(speed_profile, "minimum_corner_speed")),
+        maximum_lateral_acceleration=float(
+            _value(speed_profile, "maximum_lateral_acceleration")
+        ),
     )
     validate_centerline_clearance(
         simulator,

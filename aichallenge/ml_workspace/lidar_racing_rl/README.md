@@ -122,7 +122,7 @@ macOSではCPUコンテナによる静的・軽量確認だけを想定します
 
 ## 単独Pure Pursuit rollout
 
-`run_single_rollout.py`は既定で`simulator.track.centerline`からPure Pursuit actionを毎step計算します。Spielbergでの初期学習にはF1TENTH Gym JAX既定車両寸法を使い、AWSIMの実寸車両とは設定を分離します。NPCの横offsetもコース幅と車体幅から得る余裕内か実行前に検証します。GT poseは許可された教師・NPC制御だけに使用し、環境wrapperが返すActor観測はLiDARだけです。教師を選んだのに車両が動かない場合や非有限値が出た場合も成功扱いにしません。
+`run_single_rollout.py`は既定で`simulator.track.centerline`からPure Pursuit actionを毎step計算します。Spielbergでの初期学習にはF1TENTH Gym JAX既定車両寸法を使い、AWSIMの実寸車両とは設定を分離します。教師のwaypoint速度はcenterline曲率と横加速度上限から計算し、直線で最大8 m/s、カーブで最低3 m/sへ制限します。NPCの横offsetもコース幅と車体幅から得る余裕内か実行前に検証します。GT poseは許可された教師・NPC制御だけに使用し、環境wrapperが返すActor観測はLiDARだけです。教師を選んだのに車両が動かない場合や非有限値が出た場合も成功扱いにしません。
 
 setup完了後、CPU専用コンテナで実行します。
 

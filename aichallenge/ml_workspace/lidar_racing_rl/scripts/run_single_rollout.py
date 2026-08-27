@@ -119,6 +119,9 @@ def _validate_config(
         "teacher.base_target_speed",
         "teacher.lookahead",
         "teacher.speed_multiplier",
+        "teacher.speed_profile.type",
+        "teacher.speed_profile.minimum_corner_speed",
+        "teacher.speed_profile.maximum_lateral_acceleration",
     )
     for path in required_paths:
         if _select(config, path) is None:
@@ -164,6 +167,8 @@ def _validate_config(
     if action_source == "pure-pursuit":
         if _select(config, "teacher.reference_line") != "centerline":
             errors.append("teacher requires teacher.reference_line=centerline")
+        if _select(config, "teacher.speed_profile.type") != "curvature_limited":
+            errors.append("teacher.speed_profile.type must be curvature_limited")
         for path in (
             "teacher.base_target_speed",
             "teacher.lookahead",
@@ -490,16 +495,27 @@ def _run_rollout(
             simulator,
             reference_line=str(config.teacher.reference_line),
             base_target_speed=float(config.teacher.base_target_speed),
+            minimum_corner_speed=float(
+                config.teacher.speed_profile.minimum_corner_speed
+            ),
+            maximum_lateral_acceleration=float(
+                config.teacher.speed_profile.maximum_lateral_acceleration
+            ),
         )
         teacher_lookahead = jnp.asarray([lookahead], dtype=jnp.float32)
         teacher_speed_multiplier = jnp.asarray(
             [speed_multiplier],
             dtype=jnp.float32,
         )
+        waypoint_speed_range = (
+            float(jnp.min(waypoints[:, 2])),
+            float(jnp.max(waypoints[:, 2])),
+        )
     else:
         waypoints = None
         teacher_lookahead = None
         teacher_speed_multiplier = None
+        waypoint_speed_range = None
 
     control_dt = (
         float(config.env.simulator.physics_timestep)
@@ -878,7 +894,15 @@ def _run_rollout(
         ),
         "trace_svg": str(trace_svg) if trace_svg is not None else None,
         "pure_pursuit": (
-            {"lookahead": lookahead, "speed_multiplier": speed_multiplier}
+            {
+                "lookahead": lookahead,
+                "speed_multiplier": speed_multiplier,
+                "waypoint_speed_minimum": waypoint_speed_range[0],
+                "waypoint_speed_maximum": waypoint_speed_range[1],
+                "maximum_lateral_acceleration": float(
+                    config.teacher.speed_profile.maximum_lateral_acceleration
+                ),
+            }
             if action_source == "pure-pursuit"
             else None
         ),
