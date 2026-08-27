@@ -290,7 +290,13 @@ def _write_trace_svg(
     centerline = track.centerline
     center_x = np.asarray(centerline.xs, dtype=float)
     center_y = np.asarray(centerline.ys, dtype=float)
-    center_yaw = np.asarray(centerline.yaws, dtype=float)
+    stored_yaw = getattr(centerline, "psis", None)
+    if stored_yaw is None:
+        delta_x = np.roll(center_x, -1) - np.roll(center_x, 1)
+        delta_y = np.roll(center_y, -1) - np.roll(center_y, 1)
+        center_yaw = np.arctan2(delta_y, delta_x)
+    else:
+        center_yaw = np.asarray(stored_yaw, dtype=float)
     left_widths = np.asarray(track.left_widths, dtype=float)
     right_widths = np.asarray(track.right_widths, dtype=float)
     pose_array = np.asarray(poses, dtype=float)
