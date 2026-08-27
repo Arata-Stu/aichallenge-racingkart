@@ -45,7 +45,10 @@ update:
   target_smoothing_coefficient: 0.005
   target_entropy: -2.0
   batch_size: 256
-  updates_per_collection: 1
+  # One collection adds env.num_envs transitions.  Keep the default update-to-data
+  # ratio at 1 so the Actor learns from the teacher warmup before collecting its
+  # first post-warmup transition batch.
+  updates_per_collection: 64
 
 replay_buffer:
   implementation: jax_ring
@@ -58,5 +61,8 @@ replay_buffer:
 
 checkpoint:
   implementation: flax_msgpack_atomic
-  save_interval_updates: 10000
-  keep_last: 3
+  # A one-million-transition Step 1 run performs roughly one million updates at
+  # the default UTD ratio.  Preserve the learning curve instead of retaining only
+  # the final three (which may have regressed) policies.
+  save_interval_updates: 50000
+  keep_last: 20

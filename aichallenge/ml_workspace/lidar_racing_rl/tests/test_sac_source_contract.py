@@ -190,6 +190,20 @@ class SACSourceContractTest(unittest.TestCase):
             )
         )
 
+    def test_default_update_count_matches_vector_collection_size(self) -> None:
+        config_root = SAC_ROOT.parents[2] / "configs"
+        agent_config = (config_root / "agent" / "sac.yaml").read_text(
+            encoding="utf-8"
+        )
+        environment_config = (config_root / "env" / "base.yaml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("updates_per_collection: 64", agent_config)
+        self.assertIn("save_interval_updates: 50000", agent_config)
+        self.assertIn("keep_last: 20", agent_config)
+        self.assertIn("num_envs: 64", environment_config)
+
     def test_train_and_export_clis_fail_closed_on_v1_model_shape(self) -> None:
         required_paths = (
             "agent.actor.encoder.channels",
