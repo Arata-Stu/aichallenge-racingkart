@@ -13,7 +13,7 @@ dependencies = [
   "distrax",
   "flax",
   "hydra-core>=1.3,<1.4",
-  "jax",
+  "jax>=0.7.2,<0.8",
   "matplotlib",
   "numpy",
   "omegaconf>=2.3,<3",
@@ -25,7 +25,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # CUDA support is opt-in because the correct wheel depends on the execution host.
-cuda = ["jax[cuda12]"]
+cuda = ["jax[cuda12]>=0.7.2,<0.8"]
 # The path source is intentionally optional. Initialize the submodule before syncing.
 f1tenth = ["f1tenth-gym-jax", "jax-pf"]
 # Match the AI Challenge runtime's state_dict writer/reader version. PyTorch is
@@ -47,6 +47,13 @@ f1tenth-gym-jax = { path = "repos/f1tenth_gym_jax", editable = true }
 # its own project. Repeat it at the root with the commit from upstream's lock
 # so dependency resolution cannot silently move with jax_pf/main.
 jax-pf = { git = "https://github.com/hzheng40/jax_pf", rev = "1b1417d7d2afbf24a9c6594195c2e872a6b4460a" }
+
+[tool.uv]
+# jax-pf's package metadata still caps JAX below 0.7, while the pinned source
+# is the exact revision that F1TENTH Gym JAX resolves and locks with JAX 0.7.2.
+# Overrides from a path dependency are not inherited by the root uv project,
+# so repeat the fork's root-level compatibility contract here.
+override-dependencies = ["jax>=0.7.2,<0.8"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lidar_racing_rl"]

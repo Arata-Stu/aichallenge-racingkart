@@ -52,9 +52,30 @@ def _parse_python_sources() -> int:
 
 def _parse_data_files() -> dict[str, int]:
     toml_files = [PROJECT_ROOT / "pyproject.toml", SUBMODULE_ROOT / "pyproject.toml"]
+    parsed_toml = {}
     for path in toml_files:
         with path.open("rb") as stream:
-            tomllib.load(stream)
+            parsed_toml[path] = tomllib.load(stream)
+
+    root_project = parsed_toml[PROJECT_ROOT / "pyproject.toml"]
+    submodule_project = parsed_toml[SUBMODULE_ROOT / "pyproject.toml"]
+    expected_jax = "jax>=0.7.2,<0.8"
+    root_dependencies = root_project["project"]["dependencies"]
+    if expected_jax not in root_dependencies:
+        raise RuntimeError(f"root project must require {expected_jax}")
+    expected_cuda = "jax[cuda12]>=0.7.2,<0.8"
+    root_cuda = root_project["project"]["optional-dependencies"]["cuda"]
+    if expected_cuda not in root_cuda:
+        raise RuntimeError(f"root CUDA extra must require {expected_cuda}")
+    root_overrides = root_project["tool"]["uv"]["override-dependencies"]
+    submodule_overrides = submodule_project["tool"]["uv"]["override-dependencies"]
+    if expected_jax not in root_overrides or expected_jax not in submodule_overrides:
+        raise RuntimeError(
+            "root and F1TENTH projects must share the JAX 0.7 compatibility override"
+        )
+    jax_pf_source = root_project["tool"]["uv"]["sources"]["jax-pf"]
+    if jax_pf_source.get("rev") != "1b1417d7d2afbf24a9c6594195c2e872a6b4460a":
+        raise RuntimeError("jax-pf must remain pinned to the audited commit")
 
     json_files = sorted(
         path

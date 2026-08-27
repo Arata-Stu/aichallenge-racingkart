@@ -36,6 +36,7 @@ MIT Licenseの許諾・免責全文はsubmodule内の原文`LICENSE`に保持さ
 | ライセンス | MIT License（GitHub primary repository表示） |
 | 使用箇所 | `f1tenth` extraのray marcher依存。`pyproject.toml`の`tool.uv.sources`で直接固定。 |
 | 固定根拠 | F1TENTH Gym JAX upstream `uv.lock`の依存監査 |
+| JAX互換性 | package metadataの古い`jax<0.7`上限を、F1TENTH forkと親プロジェクトのuv overrideで`jax>=0.7.2,<0.8`へ統一。fork lockfileでは固定SHAとJAX 0.7.2の組合せを使用。 |
 
 正確なcopyright本文は未取得です。名称や著作者を推測して記載せず、依存を配布する前に固定SHAの原文licenseを取得して、MIT Licenseの著作権表示・許諾・免責全文を本noticeまたは配布物へ反映してください。
 
