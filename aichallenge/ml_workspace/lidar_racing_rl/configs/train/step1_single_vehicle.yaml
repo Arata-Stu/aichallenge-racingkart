@@ -1,0 +1,75 @@
+defaults:
+  - /env: base
+  - /vehicle: aichallenge_kart
+  - /agent: sac
+  - _self_
+
+experiment:
+  name: step1_single_vehicle
+  stage: step1
+  description: LiDAR-only SAC without opponent vehicles
+
+seed:
+  master: 0
+  environment: 1
+  reset: 2
+  action: 3
+  replay: 4
+  evaluation: 5
+
+env:
+  num_envs: 64
+  num_agents: 1
+
+training:
+  ego_agent_index: 0
+  save_npc_transitions: false
+  teacher_warmup_allowed: true
+  resume_from: null
+  total_environment_transitions: 1000000
+  log_interval_collections: 100
+  require_clean_repositories: true
+
+teacher:
+  enabled_for_rollout_smoke: true
+  type: pure_pursuit
+  reference_line: centerline
+  base_target_speed: 8.0
+  lookahead: 2.5
+  speed_multiplier: 0.8
+  normalized_action_noise_std: 0.1
+
+reward:
+  progress: true
+  relative_progress: false
+  pass_event: false
+  collision: true
+  unsafe_contact: false
+  offtrack: true
+  smoothness: true
+  reverse: true
+  stalled_behind_vehicle: false
+  weights:
+    progress: 1.0
+    relative_progress: 0.0
+    pass: 0.0
+    collision: 10.0
+    unsafe_contact: 0.0
+    off_track: 10.0
+    smoothness: 0.05
+    reverse: 1.0
+    stalled_behind: 0.0
+  overtaking:
+    behind_distance: 0.5
+    ahead_distance: 1.0
+    hold_steps: 5
+    cooldown_steps: 100
+    unsafe_contact_distance: 2.25
+    stalled_max_forward_gap: 8.0
+    stalled_speed_threshold: 0.25
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}_step1

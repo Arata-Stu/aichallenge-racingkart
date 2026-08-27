@@ -1,0 +1,39 @@
+count: 3
+learned: false
+save_transitions: false
+
+lateral_controller:
+  name: pure_pursuit
+  implementation: jax
+  vectorized: true
+  reference_line: centerline
+
+longitudinal_controller:
+  waypoint_target_speed: true
+  base_target_speed: 8.0
+  gt_safe_following: true
+  distance_gain: 0.5
+  lateral_gate: 1.5
+  safe_following_distance: {min: 3.0, max: 6.0}
+
+randomization:
+  waypoint_line: true
+  speed_multiplier: {min: 0.65, max: 1.05}
+  # The full-size kart has only 0.375 m center clearance on Spielberg's
+  # 2.2 m-wide track. Preserve line diversity without using the small-car
+  # raceline offsets from the upstream examples.
+  lateral_offset: {min: -0.2, max: 0.2}
+  lookahead: {min: 1.5, max: 4.0}
+  steering_gain: {min: 0.9, max: 1.1}
+  control_delay_steps: {min: 0, max: 2}
+  acceleration_gain: {min: 0.8, max: 1.2}
+  braking_event:
+    probability: 0.15
+    start_step: {min: 100, max: 1200}
+    duration_steps: {min: 10, max: 60}
+    acceleration: -2.0
+
+gt_usage:
+  front_vehicle_detection: true
+  actor_observation: false
+  critic_observation: false

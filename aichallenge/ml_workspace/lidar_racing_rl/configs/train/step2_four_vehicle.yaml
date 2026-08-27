@@ -1,0 +1,84 @@
+defaults:
+  # AWSIM-calibrated response randomization is not connected to the simulator
+  # yet. Keep the runnable Step 2 prototype on dynamic LiDAR only.
+  - /env: dynamic_lidar
+  - /vehicle: aichallenge_kart
+  - /npc: pure_pursuit
+  - /agent: sac
+  - _self_
+
+experiment:
+  name: step2_four_vehicle
+  stage: step2
+  description: LiDAR-only Ego SAC with three fixed-policy NPC vehicles
+
+seed:
+  master: 0
+  environment: 1
+  reset: 2
+  action: 3
+  replay: 4
+  evaluation: 5
+
+env:
+  num_envs: 64
+  num_agents: 4
+
+training:
+  ego_agent_index: 0
+  save_npc_transitions: false
+  opponent_pool_enabled: false
+  resume_from: null
+  total_environment_transitions: 2000000
+  log_interval_collections: 100
+  require_clean_repositories: true
+
+teacher:
+  enabled_for_rollout_smoke: true
+  type: pure_pursuit
+  reference_line: centerline
+  base_target_speed: 8.0
+  lookahead: 2.5
+  speed_multiplier: 0.8
+  normalized_action_noise_std: 0.1
+
+curriculum:
+  # configs/curriculum/step2.yaml defines and validates 2a--2e offline, but the
+  # trainer does not consume that schedule yet. Never label this all-NPC run 2a.
+  enabled: false
+  active_phase: null
+
+reward:
+  progress: true
+  relative_progress: true
+  pass_event: true
+  collision: true
+  unsafe_contact: true
+  offtrack: true
+  smoothness: true
+  reverse: true
+  stalled_behind_vehicle: true
+  weights:
+    progress: 1.0
+    relative_progress: 0.5
+    pass: 5.0
+    collision: 10.0
+    unsafe_contact: 2.0
+    off_track: 10.0
+    smoothness: 0.05
+    reverse: 1.0
+    stalled_behind: 0.1
+  overtaking:
+    behind_distance: 0.5
+    ahead_distance: 1.0
+    hold_steps: 5
+    cooldown_steps: 100
+    unsafe_contact_distance: 2.25
+    stalled_max_forward_gap: 8.0
+    stalled_speed_threshold: 0.25
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}_step2

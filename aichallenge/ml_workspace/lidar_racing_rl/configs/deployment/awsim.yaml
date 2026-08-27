@@ -1,0 +1,44 @@
+runtime: pytorch
+
+input:
+  topic: /sensing/lidar/scan
+  type: sensor_msgs/msg/LaserScan
+  expected_raw_beams: 1080
+  actor_sensor_topics: [/sensing/lidar/scan]
+
+output:
+  topic: /control/command/control_cmd
+  type: autoware_auto_control_msgs/msg/AckermannControlCommand
+
+preprocessing:
+  canonical_beams: 360
+  expected_range_max: 30.0
+  expected_angle_min: -2.356194490192345
+  expected_angle_max: 2.356194490192345
+  field_of_view: 4.71238898038469
+  pooling:
+    type: minimum
+    group_size: 3
+  frame_stack: 4
+  channels: [range, validity]
+  invalid_range_replacement: range_max
+  normalization: range_max
+  validate_laserscan_metadata: true
+
+control:
+  rate_hz: 20.0
+  steering_rate_limit: null
+  acceleration_rate_limit: null
+
+failsafe:
+  enabled: true
+  scan_timeout_seconds: null
+  minimum_valid_beam_ratio: null
+  stop_on_non_finite_actor_output: true
+  stop_on_inference_exception: true
+  stop_on_model_manifest_mismatch: true
+
+model:
+  file: models/policy_torch.pt
+  manifest: models/policy_manifest.json
+  flax_torch_max_absolute_error: 0.00001

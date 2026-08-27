@@ -1,0 +1,19 @@
+defaults:
+  - dynamic_lidar
+  - _self_
+
+domain_randomization:
+  enabled: true
+  sample_frequency: episode
+  requires_awsim_calibration: true
+  vehicle_response:
+    steering_gain: {min: null, max: null}
+    steering_time_constant: {min: null, max: null}
+    steering_delay: {min: null, max: null}
+    acceleration_gain: {min: null, max: null}
+    acceleration_delay: {min: null, max: null}
+    velocity_drag: {min: null, max: null}
+    effective_friction: {min: null, max: null}
+  lidar_corruption:
+    statistics_file: assets/calibration/lidar_statistics.json
+    use_measured_distribution: true

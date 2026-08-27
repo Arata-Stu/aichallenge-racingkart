@@ -1,0 +1,47 @@
+schema_version: 1
+generated_at: null
+status: incomplete_fail_closed
+source:
+  artifact_kind: unmeasured_placeholder
+  bag_path: null
+  experiment_manifest: null
+awsim_identification:
+  steering_gain: null
+  steering_time_constant: null
+  steering_delay: null
+  acceleration_gain: null
+  acceleration_delay: null
+  effective_wheelbase: null
+  velocity_drag: null
+estimation:
+  steering_gain:
+    status: unavailable
+    reason: AWSIM measurement has not been run
+  steering_time_constant:
+    status: unavailable
+    reason: AWSIM measurement has not been run
+  steering_delay:
+    status: unavailable
+    reason: AWSIM measurement has not been run
+  acceleration_gain:
+    status: unavailable
+    reason: AWSIM measurement has not been run
+  acceleration_delay:
+    status: unavailable
+    reason: AWSIM measurement has not been run
+  effective_wheelbase:
+    status: unavailable
+    reason: AWSIM measurement has not been run
+  velocity_drag:
+    status: unavailable
+    reason: AWSIM measurement has not been run
+unavailable_parameters:
+  - steering_gain
+  - steering_time_constant
+  - steering_delay
+  - acceleration_gain
+  - acceleration_delay
+  - effective_wheelbase
+  - velocity_drag
+warnings:
+  - This placeholder contains no measured or inferred calibration value.

@@ -1,0 +1,13 @@
+# Fail-closed default. Populate reviewed allowlists only in a separate run config
+# used for offline pool validation; live training integration remains unsupported.
+schema_version: 1
+enabled: false
+training_integration: false
+manifest: null
+sampling_algorithm: sha256_context_v1
+seed: 6
+validation:
+  expected_architecture_version: lidar_actor_conv1d_v1
+  allowed_training_config_sha256: []
+  allowed_root_commits: []
+  allowed_submodule_commits: []

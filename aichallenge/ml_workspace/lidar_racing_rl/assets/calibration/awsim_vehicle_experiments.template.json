@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "time_reference": "selected_message_stamp_seconds",
+  "experiments": [
+    {
+      "id": "steering-step-1",
+      "kind": "steering_step",
+      "start_seconds": null,
+      "input_start_seconds": null,
+      "steady_start_seconds": null,
+      "end_seconds": null,
+      "minimum_command_step": null,
+      "minimum_response_step": null,
+      "minimum_samples_per_window": null,
+      "notes": "実測bagを確認し、安全な入力区間とセンサ分解能に基づいて全nullを置換する"
+    },
+    {
+      "id": "steering-sine-sweep-1",
+      "kind": "steering_sine_sweep",
+      "start_seconds": null,
+      "end_seconds": null,
+      "minimum_samples": null,
+      "minimum_command_peak_to_peak": null,
+      "minimum_response_peak_to_peak": null,
+      "notes": "step同定結果の検証用。周波数を自動推測しない"
+    },
+    {
+      "id": "acceleration-step-1",
+      "kind": "acceleration_step",
+      "start_seconds": null,
+      "input_start_seconds": null,
+      "steady_start_seconds": null,
+      "end_seconds": null,
+      "minimum_command_step": null,
+      "minimum_response_step": null,
+      "minimum_samples_per_window": null,
+      "maximum_derivative_gap_seconds": null,
+      "notes": "速度statusから得る加速度応答が安定した区間を実測で指定する"
+    },
+    {
+      "id": "coast-1",
+      "kind": "coast",
+      "start_seconds": null,
+      "end_seconds": null,
+      "max_abs_command_acceleration": null,
+      "minimum_speed_mps": null,
+      "minimum_samples": null,
+      "minimum_r_squared": null,
+      "notes": "加速度指令がゼロ近傍で、前進速度が自然減衰する区間を指定する"
+    },
+    {
+      "id": "constant-speed-turn-1",
+      "kind": "constant_speed_turn",
+      "start_seconds": null,
+      "end_seconds": null,
+      "minimum_speed_mps": null,
+      "minimum_abs_steering_radians": null,
+      "minimum_abs_yaw_rate_radians_per_second": null,
+      "max_alignment_gap_seconds": null,
+      "minimum_samples": null,
+      "notes": "実操舵角・速度・yaw rateが定常な区間と実測許容値を指定する"
+    }
+  ]
+}

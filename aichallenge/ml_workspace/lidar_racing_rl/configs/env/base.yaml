@@ -1,0 +1,59 @@
+name: f1tenth_gym_jax
+
+num_envs: 64
+num_agents: 4
+ego_agent_index: 0
+
+simulator:
+  map_name: Spielberg
+  physics_timestep: 0.01
+  timestep_ratio: 5
+
+lidar:
+  source: lidar_only
+  num_beams: 360
+  field_of_view: 4.71238898038469
+  range_min: 0.001
+  range_max: 30.0
+  frame_stack: 4
+  channels: [range, validity]
+  range_normalization:
+    minimum: 0.0
+    maximum: 1.0
+  invalid_values:
+    replace_range_with: range_max
+    validity: 0.0
+  valid_values:
+    validity: 1.0
+
+observation:
+  shape: [4, 2, 360]
+  actor_allowed_fields: [lidar_range, lidar_validity]
+  critic_allowed_fields: [lidar_range, lidar_validity]
+  previous_action: false
+
+information_boundary:
+  actor_critic_gt_access: false
+  allowed_gt_consumers:
+    - reward
+    - termination
+    - reset_sampler
+    - npc_controller
+    - teacher_policy
+    - evaluation
+    - simulator_lidar_generation
+
+episode:
+  max_steps: 1800
+  max_num_laps: 1
+  ego_only_reset: true
+  separate_terminated_and_truncated: true
+
+reset:
+  longitudinal_spacing: 4.0
+  lateral_jitter: 0.25
+  heading_jitter: 0.02
+
+vectorization:
+  implementation: jax_vmap
+  forbidden_python_loop_axes: [environment, observer_vehicle, target_vehicle, lidar_beam]

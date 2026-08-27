@@ -1,0 +1,38 @@
+defaults:
+  - base
+  - _self_
+
+dynamic_lidar:
+  enabled: true
+  target_shape: oriented_bounding_box
+  self_mask: true
+  combine_operation: minimum
+  occlusion_against_static_map: true
+  intermediate_shape: [environment, observer_vehicle, target_vehicle, lidar_beam]
+
+scan_corruption:
+  enabled: false
+  # Keep every value null until assets/calibration/lidar_statistics.json exists.
+  # Partial parameter groups are rejected by ScanCorruptionConfig.validate().
+  # Distance values must be converted from measured metres to canonical [0, 1]
+  # units before this config is passed to the post-canonical corruption stage.
+  far_leak:
+    probability: null
+    extra_min: null
+    extra_max: null
+  single_beam_dropout:
+    probability: null
+  sector_dropout:
+    probability: null
+    width_beams: null
+  frame_hold:
+    probability: null
+  frame_delay:
+    # Categorical probabilities ordered as delay steps [0, 1, ..., N].
+    probabilities: null
+  gaussian_noise:
+    base_std: null
+    range_scale: null
+  angle_bias:
+    mean_radians: null
+    std_radians: null

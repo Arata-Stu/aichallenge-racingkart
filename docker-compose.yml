@@ -15,6 +15,13 @@ x-autoware-base: &autoware-base
     - TZ=Asia/Tokyo
     - RUN_MODE=${RUN_MODE:-}
     - SIM_MODE=${SIM_MODE:-}
+    - CONTROL_METHOD=${CONTROL_METHOD:-mpc}
+    # Empty means mode-specific default: regular eval stays off unless a LiDAR
+    # controller is selected; the dedicated lidar-rl mode defaults to CPU.
+    - LIDAR_MODE=${LIDAR_MODE:-}
+    - LIDAR_RL_VEHICLES=${LIDAR_RL_VEHICLES:-1}
+    - LIDAR_RL_LAPS=${LIDAR_RL_LAPS:-unlimited}
+    - LIDAR_RL_TIMEOUT_SECONDS=${LIDAR_RL_TIMEOUT_SECONDS:-10000000.0}
     - CMD=${CMD:-}
     - COLCON_TRACE=${COLCON_TRACE:-}
     - ROS_HOME=${ROS_HOME:-}

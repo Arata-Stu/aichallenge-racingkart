@@ -22,7 +22,7 @@
 
   <!-- Control method -->
   <arg name="control_method" default="mpc"
-      description="Select control: mpc, pure_pursuit, tiny_lidar_net, pilot_net, joycon, rl_train"/>
+      description="Select control: mpc, pure_pursuit, tiny_lidar_net, lidar_racing, pilot_net, joycon, rl_train"/>
 
   <!-- Global parameters -->
   <group scoped="false">
@@ -153,6 +153,12 @@
 
   <group if="$(eval &quot;'$(var control_method)' == 'tiny_lidar_net'&quot;)">
     <include file="$(find-pkg-share aichallenge_submit_launch)/launch/control/tiny_lidar_net.launch.xml">
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    </include>
+  </group>
+
+  <group if="$(eval &quot;'$(var control_method)' == 'lidar_racing'&quot;)">
+    <include file="$(find-pkg-share aichallenge_submit_launch)/launch/control/lidar_racing.launch.xml">
       <arg name="use_sim_time" value="$(var use_sim_time)"/>
     </include>
   </group>

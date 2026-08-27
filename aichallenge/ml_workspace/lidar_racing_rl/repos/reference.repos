@@ -1,0 +1,15 @@
+repositories:
+  stoix:
+    type: git
+    url: https://github.com/EdanToledo/Stoix.git
+    version: REPLACE_WITH_FULL_COMMIT_SHA
+
+  end2race:
+    type: git
+    url: https://github.com/michigan-traffic-lab/End2Race.git
+    version: REPLACE_WITH_FULL_COMMIT_SHA
+
+  f1tenth_development_gym:
+    type: git
+    url: https://github.com/F1Tenth-INI/f1tenth_development_gym.git
+    version: REPLACE_WITH_FULL_COMMIT_SHA

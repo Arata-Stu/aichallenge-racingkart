@@ -30,7 +30,7 @@
 1. tar.gz 内の最上位ディレクトリ名は **必ず `aichallenge_submit/`** にする。異なる名前にすると eval ビルド時に展開後の `aichallenge_submit/` が空になり、参加者パッケージが一切ビルドされない。
 2. tar.gz は**リポジトリ直下（Docker ビルドコンテキスト内）**に置く。リポジトリルート外のパスを指定すると `docker build` の `COPY` が解決できず eval イメージのビルドが失敗する。
 3. エントリ launch ファイルは **`aichallenge_submit_launch` パッケージ内の `aichallenge_submit.launch.xml`** として提供する。このファイルを欠くと評価の launch ツリーが起動できない。
-4. `control_method` に渡せる値は **`mpc`・`pure_pursuit`・`tiny_lidar_net`・`pilot_net`・`joycon` の 5 つのみ**（既定: `mpc`）。それ以外の値を渡すとどの制御ノードも起動せず車両が動かない。既定値を変更すると `control_method` を明示しない既存の起動経路の挙動が変わる。
+4. 競技走行用の `control_method` は **`mpc`・`pure_pursuit`・`tiny_lidar_net`・`lidar_racing`・`pilot_net`・`joycon` の 6 種類**（既定: `mpc`）。`rl_train` はAWSIM学習時のreset中継専用であり、競技走行用コントローラではない。それ以外の値を渡すとどの制御ノードも起動せず車両が動かない。既定値を変更すると `control_method` を明示しない既存の起動経路の挙動が変わる。
 5. 提出パッケージは最小インターフェース（AWSIM センサトピックの subscribe、`/localization/kinematic_state` と `/planning/scenario_planning/trajectory` の produce、`/control/command/control_cmd` の publish、`/set_initial_pose` サービスの advertise）をすべて満たす。いずれかのトピック名・型を変更すると localization / planning / control の連結が切れ、車両の起動・走行・評価ができなくなる。
 
 ---
@@ -77,12 +77,13 @@ aichallenge_submit.launch.xml
 
 ### `control_method` の有効値
 
-`reference.launch.xml` は以下の引数を持ちます。
+提出物側の`aichallenge_submit.launch.xml`が以下の引数を持ち、`reference.launch.xml`へ明示的に渡します。評価イメージで公式system launchが使われる場合も、提出物自身が環境変数を読むため選択が失われません。
 
 ```xml
-<arg name="control_method" default="mpc"
-     description="Select control: mpc, pure_pursuit, tiny_lidar_net, pilot_net, joycon"/>
+<arg name="control_method" default="$(env CONTROL_METHOD mpc)"/>
 ```
+
+Docker経由のAWSIM開発起動では`make lidar-rl-awsim`を使います。この専用ターゲットはCPU LiDARを有効化し、`CONTROL_METHOD=lidar_racing`も設定します。通常の`make dev`はLiDARを無効化するため、環境変数だけを付けてもLiDAR制御の確認には使えません。sealed評価では、提出物を封入したイメージのビルド後に`CONTROL_METHOD=lidar_racing make eval`と指定します。環境変数とlaunch引数をどちらも省略した場合は、従来どおり`mpc`が選択されます。
 
 各値が起動するノードと消費するセンサ:
 
@@ -90,13 +91,15 @@ aichallenge_submit.launch.xml
 |---|---|---|
 | `mpc`（既定） | `multi_purpose_mpc_ros`（Python） | `/localization/kinematic_state`、`/planning/scenario_planning/trajectory` |
 | `pure_pursuit` | `simple_pure_pursuit`（C++） | `/localization/kinematic_state`、`/planning/scenario_planning/trajectory` |
-| `tiny_lidar_net` | `tiny_lidar_net_controller`（Python） | `/scan`（`sensor_msgs/LaserScan`） |
+| `tiny_lidar_net` | `tiny_lidar_net_controller`（Python） | `/sensing/lidar/scan`（`sensor_msgs/LaserScan`、launchで内部`/scan`へremap） |
+| `lidar_racing` | `lidar_racing_controller`（Python/PyTorch） | `/sensing/lidar/scan`（`sensor_msgs/LaserScan`） |
 | `pilot_net` | `pilot_net_controller`（Python） | `/image_raw`（`sensor_msgs/Image`） |
 | `joycon` | `teleop_manager`（`teleop_manager` パッケージ） | （手動制御） |
+| `rl_train`（開発専用） | `rl_train_controller`（Python） | `/awsim/reset`（reset中継のみ。制御指令は生成しない） |
 
-各値は `control/<name>.launch.xml` を `<include>` する `<group if=...>` で実装されており、いずれも `/control/command/control_cmd`（`autoware_auto_control_msgs/AckermannControlCommand`）を publish します。
+各値は `control/<name>.launch.xml` を `<include>` する `<group if=...>` で実装されています。競技走行用の6方式は `/control/command/control_cmd`（`autoware_auto_control_msgs/AckermannControlCommand`）をpublishし、開発専用の`rl_train`だけはreset中継に限定されます。
 
-上記 5 値以外を渡すと、どの `<group if=...>` にも一致せず制御ノードが起動せず車両が動きません。既定値 `mpc` を変更すると、`control_method` を明示しない既存の起動経路の挙動が変わります。
+上記 7 値以外を渡すと、どの `<group if=...>` にも一致せず制御ノードが起動せず車両が動きません。既定値 `mpc` を変更すると、`control_method` を明示しない既存の起動経路の挙動が変わります。`rl_train`単独では制御指令を生成しないため、競技評価には使用しません。
 
 ---
 
@@ -118,11 +121,11 @@ AWSIM が publish し参加者ノードが subscribe するトピックです（
 | `/vehicle/status/steering_status` | `autoware_auto_vehicle_msgs/SteeringReport` | `reference.launch.xml`（raw_vehicle_cmd_converter 入力、実車経路のみ） |
 | `/clock` | `rosgraph_msgs/Clock` | シミュレーション時間（`use_sim_time=true`） |
 
-`tiny_lidar_net` 使用時の追加入力（要確認: AWSIM 側の `/scan` publisher 名は本リポジトリ外）:
+LiDAR制御方式で使用する追加入力:
 
 | トピック | 型 | 確認元 |
 |---|---|---|
-| `/scan` | `sensor_msgs/LaserScan` | `tiny_lidar_net_controller_node.py` の `create_subscription` |
+| `/sensing/lidar/scan` | `sensor_msgs/LaserScan` | `tiny_lidar_net.launch.xml`のremap、`lidar_racing_controller.launch.xml`のremap |
 
 `pilot_net` 使用時の追加入力（要確認: AWSIM 側のカメラトピック名は本リポジトリ外）:
 
@@ -136,9 +139,9 @@ AWSIM が publish し参加者ノードが subscribe するトピックです（
 
 | トピック | 型 | 確認元 |
 |---|---|---|
-| `/control/command/control_cmd` | `autoware_auto_control_msgs/AckermannControlCommand` | `pure_pursuit.launch.xml`（remap）、`mpc_controller.py`、`boost_commander.cpp`、`tiny_lidar_net_controller_node.py`、`pilot_net_controller_node.py` |
+| `/control/command/control_cmd` | `autoware_auto_control_msgs/AckermannControlCommand` | `pure_pursuit.launch.xml`（remap）、`mpc_controller.py`、`boost_commander.cpp`、`tiny_lidar_net_controller_node.py`、`lidar_racing_controller/node.py`、`pilot_net_controller_node.py` |
 
-AWSIM はこのトピックを受けてカートを動かします。全制御方式（mpc / pure_pursuit / tiny_lidar_net / pilot_net）がこのトピックに収束します。
+AWSIM はこのトピックを受けてカートを動かします。競技用の全制御方式（mpc / pure_pursuit / tiny_lidar_net / lidar_racing / pilot_net / joycon）がこのトピックに収束します。
 
 実車経路（`simulation=false`）のみ使用する追加出力:
 

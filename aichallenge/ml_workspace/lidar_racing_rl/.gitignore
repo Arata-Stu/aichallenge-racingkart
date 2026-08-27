@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# Test and lint caches
+.coverage
+.coverage.*
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+
+# Training artifacts
+outputs/
+checkpoints/
+replay_buffers/
+tensorboard/
+wandb/
+exported/
+
+# Recorded and converted data
+*.db3
+*.mcap
+*.msgpack
+*.npz
+*.pt
+*.pth
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
+
+# The parent ml_workspace ignore file broadly excludes ENV/ and train/.
+# These names are intentional Hydra config groups and must remain tracked.
+!configs/
+!configs/env/
+!configs/env/**
+!configs/train/
+!configs/train/**

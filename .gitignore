@@ -6,6 +6,10 @@
 *.mcap
 rosbag2*/
 *.pyc
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
 *pem
 *.zstd
 .env
@@ -13,6 +17,15 @@ vehicle/.env
 metadata.yaml
 output/
 outputs/
+checkpoints/
+wandb/
+tensorboard/
+replay_buffers/
+*.npz
+*.msgpack
+*.pt
+*.pth
+!aichallenge/workspace/src/aichallenge_submit/lidar_racing_controller/models/policy_torch.pt
 aichallenge/capture/
 
 # AI related local notes (do not commit)

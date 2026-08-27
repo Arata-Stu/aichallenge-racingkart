@@ -1,0 +1,26 @@
+vehicle:
+  length: 2.0
+  width: 1.45
+  wheelbase: 1.087
+  max_acceleration: 3.2
+  min_acceleration: -3.2
+  # Match racing_kart_description/config/vehicle_info.param.yaml. AWSIM
+  # steering-response identification may narrow this contract, never widen it
+  # without measured evidence.
+  max_steering_angle: 0.64
+  min_steering_angle: -0.64
+  min_velocity: 0.0
+  max_velocity: 8.333333333333334
+  front_axle_distance: 0.5435
+  rear_axle_distance: 0.5435
+
+awsim_identification:
+  calibration_file: assets/calibration/awsim_vehicle_model.yaml
+  steering_gain: null
+  steering_time_constant: null
+  steering_delay: null
+  acceleration_gain: null
+  acceleration_delay: null
+  effective_wheelbase: null
+  velocity_drag: null
+  effective_friction: null

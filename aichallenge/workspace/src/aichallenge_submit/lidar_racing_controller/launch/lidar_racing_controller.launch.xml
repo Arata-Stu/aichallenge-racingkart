@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="scan_topic" default="/sensing/lidar/scan"/>
+  <arg name="control_cmd_topic" default="/control/command/control_cmd"/>
+  <arg name="param_file"
+       default="$(find-pkg-share lidar_racing_controller)/config/lidar_racing_controller.param.yaml"/>
+  <arg name="model_path"
+       default="$(find-pkg-share lidar_racing_controller)/models/policy_torch.pt"/>
+  <arg name="manifest_path"
+       default="$(find-pkg-share lidar_racing_controller)/models/policy_manifest.json"/>
+
+  <node pkg="lidar_racing_controller"
+        exec="lidar_racing_controller_node"
+        name="lidar_racing_controller"
+        output="screen">
+    <param from="$(var param_file)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <param name="model.path" value="$(var model_path)"/>
+    <param name="model.manifest_path" value="$(var manifest_path)"/>
+    <remap from="input/scan" to="$(var scan_topic)"/>
+    <remap from="output/control_cmd" to="$(var control_cmd_topic)"/>
+  </node>
+</launch>

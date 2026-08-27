@@ -1,0 +1,20 @@
+services:
+  lidar-rl:
+    environment:
+      JAX_PLATFORMS: "${JAX_PLATFORMS:-cuda}"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      # Do not let a CUDA-specific environment replace packages in the CPU
+      # environment when both modes are used on the same Docker host.
+      - lidar-rl-gpu-venv:/opt/lidar-rl-venv
+
+volumes:
+  lidar-rl-gpu-venv:

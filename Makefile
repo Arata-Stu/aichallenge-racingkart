@@ -2,12 +2,33 @@
 SHELL := /bin/bash
 
 .PHONY: autoware-build autoware-vehicle autoware-simulator autoware-request-initialpose autoware-request-control  awsim-request-start awsim-request-reset autoware-driver-zenoh autoware-driver-zenoh-rosbag \
-	simulator dev dev2 dev3 dev4 driver zenoh download rviz2 down down_all ps autoware-attach autoware-bash eval
+	simulator dev dev2 dev3 dev4 lidar-rl-awsim lidar-rl-awsim4 \
+	lidar-rl-request-control lidar-rl-request-control4 driver zenoh download \
+	rviz2 down down_all ps autoware-attach autoware-bash eval
 
 # Used by docker-compose.yml for build/eval artifact ownership.
 HOST_UID ?= $(shell id -u)
 HOST_GID ?= $(shell id -g)
 export HOST_UID HOST_GID
+
+# LiDAR-only RL uses a standalone Python/uv image. Set LIDAR_RL_GPU=1 to add
+# the NVIDIA overlay; CPU is the portable default (including macOS smoke use).
+LIDAR_RL_DIR := aichallenge/ml_workspace/lidar_racing_rl
+LIDAR_RL_GPU ?= 0
+LIDAR_RL_COMPOSE = docker compose --project-directory $(LIDAR_RL_DIR) \
+	-f $(LIDAR_RL_DIR)/compose.yaml \
+	$(if $(filter 1 true yes,$(LIDAR_RL_GPU)),-f $(LIDAR_RL_DIR)/compose.gpu.yaml)
+LIDAR_RL_RUN = $(LIDAR_RL_COMPOSE) run --rm --no-deps lidar-rl
+LIDAR_RL_ARGS ?=
+# The path dependency is optional in pyproject.toml, but every executable
+# environment entry point needs it. CUDA remains opt-in with the GPU overlay.
+LIDAR_RL_UV_EXTRAS = --extra f1tenth \
+	$(if $(filter 1 true yes,$(LIDAR_RL_GPU)),--extra cuda)
+LIDAR_RL_SYNC_ARGS ?= $(LIDAR_RL_UV_EXTRAS)
+LIDAR_RL_RUN_ARGS ?= $(LIDAR_RL_UV_EXTRAS)
+LIDAR_RL_EXPORT_RUN_ARGS ?= $(LIDAR_RL_UV_EXTRAS) --extra export
+# The full pytest suite includes Flax-to-PyTorch parity and bundle tests.
+LIDAR_RL_TEST_RUN_ARGS ?= $(LIDAR_RL_EXPORT_RUN_ARGS)
 # Stop host shell's ROS_DOMAIN_ID from overriding .env via compose interpolation,
 # but still honor an explicit `make foo ROS_DOMAIN_ID=N` command-line override.
 unexport ROS_DOMAIN_ID
@@ -84,6 +105,40 @@ dev2 dev3 dev4: simulator
 	for p in $$(seq 1 $$N); do LOG_DIR=$(LOG_DIR) ROS_DOMAIN_ID=$$p docker compose -p $$p up -d autoware; done; \
 	echo "To Stop: make down"
 
+# AWSIM transfer and ROS inference stay in the existing AI Challenge image.
+# The model may be absent during bring-up; the controller then publishes only
+# its fail-safe command. Bulk F1TENTH/JAX work uses the standalone ML image.
+lidar-rl-awsim:
+	LOG_DIR=$(LOG_DIR) SIM_MODE=lidar-rl ROS_DOMAIN_ID=0 \
+		LIDAR_RL_VEHICLES=1 docker compose up -d simulator
+	LOG_DIR=$(LOG_DIR) RUN_MODE=awsim ROS_DOMAIN_ID=1 \
+		CONTROL_METHOD=lidar_racing docker compose up -d autoware
+	@echo "Started LiDAR-only AWSIM and lidar_racing_controller (ROS domain 1)"
+
+lidar-rl-awsim4:
+	LOG_DIR=$(LOG_DIR) SIM_MODE=lidar-rl ROS_DOMAIN_ID=0 \
+		LIDAR_RL_VEHICLES=4 docker compose up -d simulator
+	@for p in 1 2 3 4; do \
+		LOG_DIR=$(LOG_DIR) RUN_MODE=awsim ROS_DOMAIN_ID=$$p \
+			CONTROL_METHOD=lidar_racing docker compose -p $$p up -d autoware; \
+	done
+	@echo "Started four LiDAR-only AWSIM domains with lidar_racing_controller"
+
+# Run these after the corresponding Autoware containers have discovered the
+# AWSIM control-mode request topic. Keeping authorization explicit avoids a
+# startup sleep whose correct duration depends on the host.
+lidar-rl-request-control:
+	ROS_DOMAIN_ID=1 CMD="ros2 topic pub -1 /awsim/control_mode_request_topic std_msgs/msg/Bool '{data: true}'" \
+		docker compose run --rm --no-deps autoware-command
+
+lidar-rl-request-control4:
+	@for p in 1 2 3 4; do \
+		echo "Request AWSIM control on ROS domain $$p"; \
+		ROS_DOMAIN_ID=$$p \
+			CMD="ros2 topic pub -1 /awsim/control_mode_request_topic std_msgs/msg/Bool '{data: true}'" \
+			docker compose -p $$p run --rm --no-deps autoware-command; \
+	done
+
 gate1: SIM_MODE := gate1
 gate2: SIM_MODE := gate2
 gate3: SIM_MODE := gate3
@@ -136,6 +191,47 @@ autoware-attach:
 
 autoware-bash:
 	CMD="bash --rcfile /etc/skel/.bashrc -i" docker compose run --rm --no-deps autoware-command
+
+.PHONY: lidar-rl-static lidar-rl-setup lidar-rl-test lidar-rl-benchmark \
+	lidar-rl-train-step1 lidar-rl-train-step2 lidar-rl-eval lidar-rl-export \
+	lidar-rl-install-policy
+
+LIDAR_RL_BUNDLE ?= $(LIDAR_RL_DIR)/exported
+LIDAR_RL_INSTALL_ARGS ?=
+
+lidar-rl-static:
+	PYTHONDONTWRITEBYTECODE=1 python3 $(LIDAR_RL_DIR)/scripts/check_source_contract.py
+	git diff --check
+	git diff --cached --check
+	git -C $(LIDAR_RL_DIR)/repos/f1tenth_gym_jax diff --check
+
+lidar-rl-setup:
+	$(LIDAR_RL_COMPOSE) build lidar-rl
+	$(LIDAR_RL_RUN) uv sync $(LIDAR_RL_SYNC_ARGS)
+
+lidar-rl-test:
+	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_TEST_RUN_ARGS) pytest $(LIDAR_RL_ARGS)
+
+lidar-rl-benchmark:
+	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_RUN_ARGS) python scripts/benchmark_env.py $(LIDAR_RL_ARGS)
+
+lidar-rl-train-step1:
+	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_RUN_ARGS) python scripts/train.py \
+		--config-name step1_single_vehicle $(LIDAR_RL_ARGS)
+
+lidar-rl-train-step2:
+	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_RUN_ARGS) python scripts/train.py \
+		--config-name step2_four_vehicle $(LIDAR_RL_ARGS)
+
+lidar-rl-eval:
+	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_RUN_ARGS) python scripts/evaluate.py $(LIDAR_RL_ARGS)
+
+lidar-rl-export:
+	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_EXPORT_RUN_ARGS) python scripts/export_policy.py $(LIDAR_RL_ARGS)
+
+lidar-rl-install-policy:
+	python3 $(LIDAR_RL_DIR)/scripts/install_policy_bundle.py \
+		--bundle $(LIDAR_RL_BUNDLE) $(LIDAR_RL_INSTALL_ARGS)
 
 # Download submission data by asking for credentials interactively
 # Usage:

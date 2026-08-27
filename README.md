@@ -72,6 +72,13 @@ make autoware-request-control
 make down
 ```
 
+LiDAR-only ActorをAWSIMで確認する場合は、通常の`make dev`ではなく、LiDARと専用コントローラを同時に有効化する次のターゲットを使います。
+
+```bash
+make lidar-rl-awsim
+make lidar-rl-request-control
+```
+
 コンテナはホストの UID/GID（`HOST_UID`/`HOST_GID`）で動作するため、`output/` 配下の生成物はホストユーザー所有になり root 権限は不要です。
 
 ## まずは読んでほしいもの

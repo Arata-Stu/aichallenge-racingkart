@@ -41,7 +41,7 @@ make eval → run_evaluation.bash → evaluation.launch.xml
 - start-mode: `dev.sh` は count（全車接地後にカウントダウン開始、`/admin/awsim/start` 不要）。
   `eval.sh` / `parallel.sh` は sync（`/admin/awsim/start` 待ち。評価では awsim_state_manager が
   自動送信、手動で送るなら `make awsim-request-start`）。
-- センサー（camera/LiDAR）は off が既定。GPU 描画への切り替えは各ファイル末尾のコメント参照。
+- センサー（camera/LiDAR）は通常offが既定。`eval.sh`は`CONTROL_METHOD`が`lidar_racing`または`tiny_lidar_net`の場合だけLiDARをCPUで有効化し、`LIDAR_MODE=off|cpu|gpu`で明示上書きできる。GPU描画への切り替えは各ファイル末尾のコメント参照。
 - 引数の完全な仕様は AWSIM リポジトリの `docs/AIChallenge/specs/CLI.md` を参照。
 
 ## 設計方針
@@ -52,3 +52,26 @@ make eval → run_evaluation.bash → evaluation.launch.xml
 
 新モードは近いものを `cp` して引数を直すだけ（`simulator-<新mode>` が自動で使える）。
 末尾の GPU 切り替えコメントは編集対象行の隣に置くガイドなので、共通化せず各ファイルに残す。
+
+# LiDAR-only RL mode
+
+`lidar-rl.sh` is the AWSIM transfer and inference scenario for the LiDAR-only
+policy. It runs inside the existing AI Challenge simulator image, enables the
+2D LiDAR, and disables camera, IMU, GNSS, and V2X processing.
+
+From the repository root:
+
+```bash
+make simulator-lidar-rl
+```
+
+The default is one vehicle with CPU LiDAR. For four vehicles or a supported
+NVIDIA LiDAR backend:
+
+```bash
+LIDAR_RL_VEHICLES=4 make simulator-lidar-rl
+LIDAR_MODE=gpu make simulator-lidar-rl
+```
+
+AWSIM and the ROS 2 controller remain in the existing AI Challenge Docker
+environment. F1TENTH/JAX bulk training uses the standalone `lidar-rl` image.

@@ -60,15 +60,23 @@ FROM common AS eval
 
 ENV RCUTILS_COLORIZED_OUTPUT=0
 ARG SUBMIT_TAR=submit/aichallenge_submit.tar.gz
+ARG AICHALLENGE_EVAL_BASE_COMMIT=180c0a6f902da59cc14cd3077ec1ca57fe0f1813
 
 COPY ${SUBMIT_TAR} /tmp/s.tgz
-RUN git clone --depth 1 https://github.com/AutomotiveAIChallenge/aichallenge-racingkart /t \
+RUN git init -q /t \
+ && git -C /t remote add origin https://github.com/AutomotiveAIChallenge/aichallenge-racingkart \
+ && git -C /t fetch --depth 1 origin "${AICHALLENGE_EVAL_BASE_COMMIT}" \
+ && git -C /t checkout -q --detach FETCH_HEAD \
  && mv /t/aichallenge /aichallenge \
  && rm -rf /aichallenge/simulator /aichallenge/workspace/src/aichallenge_submit /t \
  && chmod 757 /aichallenge \
  && tar zxf /tmp/s.tgz -C /aichallenge/workspace/src \
  && rm /tmp/s.tgz
 COPY aichallenge/simulator/ /aichallenge/simulator/
+# The eval stage otherwise uses only the official repository clone. Overlay the
+# sensor-mode entry so CONTROL_METHOD can enable LiDAR in the sealed image while
+# the participant submission remains limited to aichallenge_submit/.
+COPY aichallenge/simulator_scripts/eval.sh /aichallenge/simulator_scripts/eval.sh
 
 
 RUN bash -c ' \
