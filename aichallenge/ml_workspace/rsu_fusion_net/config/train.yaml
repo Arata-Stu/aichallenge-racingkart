@@ -3,18 +3,43 @@ data:
   val_dir: ./datasets/val
   history_len: 5
   max_range: 45.0
+  # Raw control acceleration is -2..2; normalize it to the model's tanh range.
+  acceleration_scale: 2.0
+  # A fixed 3-second horizon, sampled every 0.25 seconds for evaluation.
+  trajectory_steps: 12
+  trajectory_dt: 0.25
+  trajectory_distance_scale: 50.0
+  max_speed: 15.0
+  # Semantic BEV channels: reachable, free, wall, dynamic obstacle,
+  # obstacle occlusion and wall occlusion. Ray coverage and fixed ego mask are omitted.
+  bev_channels: [0, 1, 2, 3, 4, 5]
+  # Current grid: rear 8m + front 20m, left/right 16m, 0.2m/cell.
+  bev_height: 160
+  bev_width: 140
+  balance_acceleration: true
+  max_balance_ratio: 10.0
 
 model:
+  # trajectory_bezier_v2: separate 1D ego/RSU scans
+  # bev_trajectory_bezier_v1: fused semantic BEV with an efficient 2D encoder
+  architecture: trajectory_bezier_v2
   scan_dim: 1080
   rsu_count: 6
   rsu_meta_dim: 5
-  vehicle_state_dim: 0
+  vehicle_state_dim: 1
   output_dim: 2
   frame_feature_dim: 128
   temporal_hidden_dim: 128
   fusion_hidden_dim: 128
   distance_decay_m: 35.0
   top_k_rsus: 2
+  trajectory_modes: 4
+  trajectory_dim: 3
+  # Four learned anchors at 0.75-second intervals; output points are sampled
+  # from the resulting piecewise cubic Bezier path.
+  trajectory_anchor_count: 4
+  max_anchor_step_normalized: 0.24
+  max_anchor_heading_delta: 1.2
 
 train:
   batch_size: 64
@@ -25,3 +50,20 @@ train:
   early_stop_patience: 12
   save_dir: ./checkpoints
   log_dir: ./logs
+  run_name: ""
+  pretrained: ""
+
+loss:
+  # RSU Fusion learns throttle release/full-acceleration behavior and steering.
+  acceleration_weight: 1.0
+  steering_weight: 1.0
+  control_weight: 1.0
+  trajectory_weight: 2.0
+  average_displacement_weight: 1.0
+  endpoint_weight: 1.5
+  speed_weight: 1.0
+  mode_weight: 0.2
+  smoothness_weight: 0.05
+  diversity_weight: 0.05
+  # Normalized distance (0.08 * 50m = 4m) between final candidate positions.
+  diversity_margin: 0.08

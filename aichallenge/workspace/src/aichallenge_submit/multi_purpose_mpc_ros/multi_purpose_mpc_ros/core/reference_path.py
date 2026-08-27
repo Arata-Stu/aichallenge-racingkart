@@ -210,7 +210,15 @@ class ReferencePath:
         self.path_constraints: Optional[List[np.ndarray]] = None
         self.border_cells = BorderCells()
 
+        # Reset by MPCController before every control iteration.  This stays
+        # true across the solver's relaxed-safety-margin retries so the
+        # controller can report that any path construction attempt failed.
+        self.infeasible_path_detected = False
+
         self.COUNT = 0
+
+    def reset_infeasible_path_status(self) -> None:
+        self.infeasible_path_detected = False
 
     def set_path_constraints(self, upper_bounds: List[float], lower_bounds: List[float], n_rows, n_cols) -> None:
         self.path_constraints = [
@@ -864,7 +872,7 @@ class ReferencePath:
             # Check feasibility of the path after subtracting safety margin
             if ub_sm < lb_sm:
                 # 一つ前のifの判定でboundsは正常になっているはずなので、こちらの判定に入る場合は何らかの実装上の異常がある
-                print("!!!! Infeasible path detected !!!!")
+                self.infeasible_path_detected = True
                 ub_sm = 0.0
                 lb_sm = 0.0
 
@@ -1002,7 +1010,7 @@ class ReferencePath:
             # Set waypoint coordinates as bound cells if no feasible
             # segment available
             else:
-                print(f"No feasible free segment found! wp_id: {wp_id}, n: {n}")
+                self.infeasible_path_detected = True
                 ub_ls, lb_ls = (wp.x, wp.y), (wp.x, wp.y)
 
                 # left_angle = np.mod(wp.psi + math.pi / 2 + math.pi,

@@ -64,14 +64,22 @@ reference.launch.xml (aichallenge_submit_launch)
 | `planning/scenario_planning/trajectory` | Trajectory | 相対パス。`update_by_topic: true` 時のみ使用 |
 | `control/control_mode_request_topic` | Bool | 制御有効/無効 |
 | `/control/mpc/stop_request` | Empty | 停止要求 |
+| `/v2x/vehicle_positions` | V2XVehiclePositionArray | 障害物回避有効時。他車のみを使用し、`ROS_DOMAIN_ID=N` に対応する自車 `dN` は除外 |
+| `/localization/imu_gnss_poser/pose_with_covariance` | PoseWithCovarianceStamped | infeasible時のEKF位置差診断 |
 
 **出力:**
 | トピック名 | 型 | 備考 |
 |-----------|-----|------|
-| `/control/command/control_cmd` | AckermannControlCommand | **既存と同一** |
+| `/control/command/control_cmd_mpc` | AckermannControlCommand | 自動復帰有効時のMPC内部出力 |
+| `/control/command/control_cmd` | AckermannControlCommand | 復帰スーパーバイザー通過後の最終出力 |
 | `/control/command/control_cmd_raw` | AckermannControlCommand | ゲイン適用前 |
+| `/control/mpc/infeasible` | Bool | 経路制約またはソルバが実行不能な状態。自動復帰の判定に使用 |
 | `/mpc/prediction` | MarkerArray | 予測軌跡（可視化） |
 | `/mpc/ref_path` | MarkerArray | 参照パス（可視化） |
+
+infeasible の警告には `reason=path|solver`、waypoint ID、横偏差、最寄りV2X車両、
+EKFとGNSS入力の位置差を含める。複数台走行で「他車に塞がれた」のか、衝突後に
+自己位置がずれたのかを次回ログだけで切り分けられる。
 
 ### 経路参照の方式
 
@@ -112,6 +120,8 @@ MPC コントローラは独自の参照パスと occupancy grid map を持ち�
   │     /localization/kinematic_     │
   │       state (Odometry)           │
   │   出力:                          │
+  │     /control/command/control_cmd_mpc │
+  │             ↓ stuck_recovery_controller │
   │     /control/command/control_cmd │
   │     /mpc/prediction (可視化)     │
   │     /mpc/ref_path   (可視化)     │

@@ -1,88 +1,137 @@
 #!/usr/bin/env python3
-"""
-ROS2 Domain Bridge Node
-DOMAIN=1 の /awsim/reset を受け取り、DOMAIN=0 の /admin/awsim/reset に転送する
-.launch.xml から起動することを想定
-"""
+"""Bridge AWSIM reset and global state between a player domain and domain 0."""
 
+import os
 import threading
 
 import rclpy
 from rclpy.context import Context
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
-from std_msgs.msg import Empty
+from std_msgs.msg import Empty, String
 
 
 class DomainBridgeNode(Node):
-    """ROS2 Domain Bridge Node for forwarding reset commands.
+    """Forward reset commands between two explicitly initialized contexts."""
 
-    Subscribes to /awsim/reset on DOMAIN=1,
-    and publishes to /admin/awsim/reset on DOMAIN=0.
-    """
-
-    def __init__(self, ctx0: Context, ctx1: Context):
-        # このノード自体は DOMAIN=1 側（subscriber）
-        super().__init__('rl_train_node', context=ctx1)
+    def __init__(
+        self,
+        destination_context: Context,
+        source_context: Context,
+        source_domain_id: int,
+        destination_domain_id: int,
+    ):
+        super().__init__('awsim_reset_domain_bridge', context=source_context)
 
         self.declare_parameter('src_topic',  '/awsim/reset')
         self.declare_parameter('dst_topic',  '/admin/awsim/reset')
+        self.declare_parameter('admin_state_topic', '/admin/awsim/state')
+        self.declare_parameter('forwarded_state_topic', '/awsim/admin_state')
 
         src_topic = self.get_parameter('src_topic').value
         dst_topic = self.get_parameter('dst_topic').value
+        admin_state_topic = self.get_parameter('admin_state_topic').value
+        forwarded_state_topic = self.get_parameter('forwarded_state_topic').value
 
-        # --- DOMAIN=0 側の publisher ノード ---
-        self._pub_node = rclpy.create_node('rl_train_node_pub', context=ctx0)
+        self._state_pub = self.create_publisher(String, forwarded_state_topic, 10)
+        self._last_admin_state = None
+
+        self._pub_node = rclpy.create_node(
+            'awsim_reset_domain_bridge_publisher',
+            context=destination_context,
+            use_global_arguments=False,
+        )
         self._pub = self._pub_node.create_publisher(Empty, dst_topic, 10)
+        self._admin_state_sub = self._pub_node.create_subscription(
+            String,
+            admin_state_topic,
+            self._admin_state_cb,
+            10,
+        )
 
-        # --- DOMAIN=1 側の subscriber ---
         self.create_subscription(Empty, src_topic, self._reset_cb, 10)
 
         self.get_logger().info(
-            f"DomainBridgeNode ready. "
-            f"DOMAIN=1:{src_topic} -> DOMAIN=0:{dst_topic}"
+            f"AWSIM reset bridge ready: DOMAIN={source_domain_id}:{src_topic} "
+            f"-> DOMAIN={destination_domain_id}:{dst_topic}"
+        )
+        self.get_logger().info(
+            f"AWSIM state bridge ready: DOMAIN={destination_domain_id}:{admin_state_topic} "
+            f"-> DOMAIN={source_domain_id}:{forwarded_state_topic}"
         )
 
-    def _reset_cb(self, msg: Empty):
-        """Callback for /awsim/reset on DOMAIN=1."""
-        self.get_logger().info("Received reset on DOMAIN=1 -> forwarding to DOMAIN=0")
+    def _reset_cb(self, _msg: Empty):
         self._pub.publish(Empty())
+        self.get_logger().info("Forwarded AWSIM reset request")
+
+    def _admin_state_cb(self, msg: String):
+        forwarded = String()
+        forwarded.data = msg.data
+        self._state_pub.publish(forwarded)
+        if msg.data != self._last_admin_state:
+            self.get_logger().info(f"Forwarded AWSIM admin state: {msg.data}")
+            self._last_admin_state = msg.data
 
     def destroy_node(self):
         self._pub_node.destroy_node()
         super().destroy_node()
 
 
+def _domain_id_from_env(name: str, default: int) -> int:
+    raw_value = os.environ.get(name, str(default))
+    try:
+        domain_id = int(raw_value)
+    except ValueError as exc:
+        raise SystemExit(f"{name} must be an integer, got: {raw_value!r}") from exc
+    if not 0 <= domain_id <= 232:
+        raise SystemExit(f"{name} must be between 0 and 232, got: {domain_id}")
+    return domain_id
+
+
 def main(args=None):
-    # --- 2つの Context を用意し、それぞれ別の DOMAIN で init ---
-    ctx0 = Context()
-    rclpy.init(context=ctx0, domain_id=0, args=args)
+    source_domain_id = _domain_id_from_env('ROS_DOMAIN_ID', 1)
+    destination_domain_id = _domain_id_from_env('AWSIM_DOMAIN_ID', 0)
 
-    ctx1 = Context()
-    rclpy.init(context=ctx1, domain_id=1, args=args)
+    destination_context = Context()
+    rclpy.init(
+        context=destination_context,
+        domain_id=destination_domain_id,
+        args=args,
+    )
 
-    node = DomainBridgeNode(ctx0=ctx0, ctx1=ctx1)
+    source_context = Context()
+    rclpy.init(context=source_context, domain_id=source_domain_id, args=args)
 
-    # --- DOMAIN=0 側の publisher ノードを別スレッドで spin ---
-    exec0 = SingleThreadedExecutor(context=ctx0)
-    exec0.add_node(node._pub_node)
-    t = threading.Thread(target=exec0.spin, daemon=True)
-    t.start()
+    node = DomainBridgeNode(
+        destination_context=destination_context,
+        source_context=source_context,
+        source_domain_id=source_domain_id,
+        destination_domain_id=destination_domain_id,
+    )
 
-    # --- DOMAIN=1 側（このノード）をメインスレッドで spin ---
-    exec1 = SingleThreadedExecutor(context=ctx1)
-    exec1.add_node(node)
+    destination_executor = SingleThreadedExecutor(context=destination_context)
+    destination_executor.add_node(node._pub_node)
+    destination_thread = threading.Thread(
+        target=destination_executor.spin,
+        name='awsim-reset-domain-publisher',
+        daemon=True,
+    )
+    destination_thread.start()
+
+    source_executor = SingleThreadedExecutor(context=source_context)
+    source_executor.add_node(node)
 
     try:
-        exec1.spin()
+        source_executor.spin()
     except KeyboardInterrupt:
         pass
     finally:
-        exec0.shutdown()
-        exec1.shutdown()
+        source_executor.shutdown()
+        destination_executor.shutdown()
+        destination_thread.join(timeout=2.0)
         node.destroy_node()
-        rclpy.shutdown(context=ctx0)
-        rclpy.shutdown(context=ctx1)
+        rclpy.shutdown(context=source_context)
+        rclpy.shutdown(context=destination_context)
 
 
 if __name__ == '__main__':

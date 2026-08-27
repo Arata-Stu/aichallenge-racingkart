@@ -10,6 +10,14 @@
       # - /sensing/imu/imu_raw
       # - /sensing/gnss/nav_sat_fix
       # - /vehicle/status/steering_status
-      # - /vehicle/status/velocity_status
-      # - /localization/pose_with_covariance
+      - /vehicle/status/velocity_status
+      - /localization/pose_with_covariance
       - /sensing/lidar/scan
+      - /sensing/lidar/scan_without_obstacles
+      - /perception/virtual_scan_bev/image
+      - /rsu/curve_01/scan
+      - /rsu/curve_02/scan
+      - /rsu/curve_03/scan
+      - /rsu/curve_04/scan
+      - /rsu/curve_05/scan
+      - /rsu/curve_06/scan

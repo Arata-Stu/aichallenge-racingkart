@@ -1,0 +1,33 @@
+/**:
+  ros__parameters:
+    publish_rate: 40.0
+    command_timeout: 0.5
+    sensor_timeout: 0.5
+    # Keep a positive MPC infeasible report briefly so solver retries cannot
+    # reset the stuck timer between control cycles.
+    infeasible_timeout: 0.75
+
+    # A recovery starts when the measured speed remains close to zero and MPC
+    # either requests forward acceleration or reports an infeasible path.
+    startup_grace_period: 5.0
+    stuck_timeout: 2.5
+    stuck_velocity_threshold: 0.20
+    stuck_command_speed_threshold: 1.0
+    stuck_command_acceleration_threshold: 0.30
+
+    stop_velocity_threshold: 0.08
+    stop_hold_duration: 0.30
+    gear_settle_duration: 0.30
+    gear_feedback_timeout: 1.0
+
+    reverse_speed: -2.0
+    reverse_acceleration: 1.0
+    # Actual runs were always ending at the former 1.5 s timeout before
+    # reaching 1.0 m, so allow enough time to clear the kart/wall contact.
+    reverse_duration: 2.5
+    reverse_distance: 1.5
+    reverse_steering_scale: 1.0
+    reverse_max_steering: 0.50
+    braking_acceleration: -2.5
+
+    cooldown_duration: 4.0

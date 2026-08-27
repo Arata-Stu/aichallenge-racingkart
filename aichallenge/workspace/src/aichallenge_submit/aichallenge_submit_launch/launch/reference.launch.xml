@@ -22,9 +22,11 @@
 
   <!-- Control method -->
   <arg name="control_method" default="mpc"
-      description="Select control: mpc, pure_pursuit, tiny_lidar_net, pilot_net, joycon, rl_train"/>
+      description="Select control: mpc, pure_pursuit, tiny_lidar_net, tiny_lidar_net_pytorch, rsu_fusion_net_pytorch, pilot_net, joycon, rl_train, virtual_scan_rl"/>
   <arg name="use_obstacle_avoidance" default="false"
       description="Enable obstacle avoidance in the MPC controller"/>
+  <arg name="enable_stuck_recovery" default="$(var simulation)"
+      description="Gate MPC commands and automatically reverse when stuck"/>
 
   <!-- Global parameters -->
   <group scoped="false">
@@ -150,12 +152,28 @@
     <include file="$(find-pkg-share aichallenge_submit_launch)/launch/control/mpc.launch.xml">
       <arg name="use_sim_time" value="$(var use_sim_time)"/>
       <arg name="use_obstacle_avoidance" value="$(var use_obstacle_avoidance)"/>
+      <arg name="enable_stuck_recovery" value="$(var enable_stuck_recovery)"/>
       <arg name="track" value="$(var track)"/>
     </include>
   </group>
 
   <group if="$(eval &quot;'$(var control_method)' == 'tiny_lidar_net'&quot;)">
     <include file="$(find-pkg-share aichallenge_submit_launch)/launch/control/tiny_lidar_net.launch.xml">
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    </include>
+  </group>
+
+  <group if="$(eval &quot;'$(var control_method)' == 'tiny_lidar_net_pytorch'&quot;)">
+    <include file="$(find-pkg-share aichallenge_submit_launch)/launch/control/tiny_lidar_net_pytorch.launch.xml">
+      <arg name="simulation" value="$(var simulation)"/>
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      <arg name="vscan_mode" value="$(var simulation)"/>
+    </include>
+  </group>
+
+  <group if="$(eval &quot;'$(var control_method)' == 'rsu_fusion_net_pytorch'&quot;)">
+    <include file="$(find-pkg-share aichallenge_submit_launch)/launch/control/rsu_fusion_net_pytorch.launch.xml">
+      <arg name="simulation" value="$(var simulation)"/>
       <arg name="use_sim_time" value="$(var use_sim_time)"/>
     </include>
   </group>
@@ -170,7 +188,7 @@
     <include file="$(find-pkg-share aichallenge_submit_launch)/launch/control/joycon.launch.xml"/>
   </group>
 
-  <group if="$(eval &quot;'$(var control_method)' == 'rl_train'&quot;)">
+  <group if="$(eval &quot;'$(var control_method)' in ['rl_train', 'virtual_scan_rl']&quot;)">
     <include file="$(find-pkg-share aichallenge_submit_launch)/launch/control/rl_train.launch.xml"/>
   </group>
 

@@ -112,6 +112,10 @@ services:
 
   autoware-command:
     <<: *autoware-base
+    # GTK applications such as Terminator use the X11 MIT-SHM extension.
+    # Sharing the host IPC namespace prevents BadAccess failures when the
+    # X server attaches to the container-created shared-memory segment.
+    ipc: host
     command: ["bash", "-lc", "cd ${CMD_WORKDIR:-/aichallenge} && exec bash -lc \"${CMD:-}\""]
 
   rosbag:

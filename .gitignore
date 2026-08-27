@@ -15,6 +15,16 @@ output/
 outputs/
 aichallenge/capture/
 
+# ML generated artifacts (datasets, weights, reports and Hydra/TensorBoard output)
+aichallenge/ml_workspace/**/datasets/
+aichallenge/ml_workspace/**/checkpoints/
+aichallenge/ml_workspace/**/evaluations/
+aichallenge/ml_workspace/**/logs/
+aichallenge/ml_workspace/**/outputs/
+aichallenge/ml_workspace/**/.hydra/
+aichallenge/ml_workspace/**/*.pth
+aichallenge/ml_workspace/**/events.out.tfevents.*
+
 # AI related local notes (do not commit)
 .claude
 doc/tmp/*

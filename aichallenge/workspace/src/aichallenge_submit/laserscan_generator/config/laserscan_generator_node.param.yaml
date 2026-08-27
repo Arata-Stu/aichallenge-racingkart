@@ -8,5 +8,15 @@
     num_rays: 1080
     range_min: 0.001
 
+    # The primary scan can include other vehicles received over V2X. A second
+    # static-only topic is always published for stable NPC lane following.
+    enable_v2x_obstacles: false
+    v2x_topic: /v2x/vehicle_positions
+    ego_vehicle_id: ""          # empty infers d<N> from ROS_DOMAIN_ID=N
+    v2x_vehicle_length: 2.0
+    v2x_vehicle_width: 1.45
+    v2x_heading_min_displacement: 0.05
+    v2x_timeout_sec: 1.0
+
     debug: true
     map_frame_id: map

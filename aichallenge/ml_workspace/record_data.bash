@@ -23,6 +23,7 @@ TOPICS=(
     "/control/command/control_cmd"
     "/sensing/camera/image_raw"
     "/sensing/lidar/scan"
+    "/sensing/lidar/scan_without_obstacles"
 )
 
 mkdir -p /aichallenge/ml_workspace/rawdata

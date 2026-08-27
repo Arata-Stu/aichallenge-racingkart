@@ -1,0 +1,66 @@
+# Stage 1: one-player curriculum. Learn to complete one lap without collision.
+stage: lap
+
+ros:
+  # This is the obstacle-aware Virtual Scan. With one player it contains only
+  # the course; the same observation contract can later be used with NPCs.
+  scan_topic: /sensing/lidar/scan
+  # /admin/awsim/state is bridged from Domain 0 to this Domain 1 topic.
+  # Do not begin an episode during AWSIM's Ready/WaitStart countdown.
+  admin_state_topic: /awsim/admin_state
+  start_state: Start
+  # In the current AWSIM sequence the vehicle reaches Ready just after the
+  # global admin state reaches Start; some versions also publish vehicle Start.
+  vehicle_ready_states: [Ready, Start]
+  start_timeout_sec: 30.0
+
+observation:
+  num_rays: 1080
+  history_frames: 4
+  max_range_m: 30.0
+
+action:
+  # Policy action is [steering, longitudinal], each normalized to [-1, 1].
+  # Negative longitudinal values are braking, not rule-based control.
+  max_steering_rad: 1.0
+  max_acceleration_mps2: 2.0
+  max_braking_mps2: 2.0
+
+joy:
+  enabled: true
+  # Hold the same DualShock button used for manual mode (currently index 2).
+  # Start only joy_node during RL; do not run teleop_manager simultaneously.
+  hold_button_index: 2
+  record_interventions: true
+  record_dir: ../interventions/lap
+
+track:
+  raceline_csv: ../../../workspace/src/aichallenge_submit/simple_trajectory_generator/data/raceline_awsim_30km.csv
+  # Keep projection local so the progress reward cannot jump through a wall at
+  # a hairpin. Values are segment counts, not metres.
+  local_search_back: 8
+  local_search_forward: 16
+  max_progress_per_step_m: 4.0
+  off_track_distance_m: 5.0
+
+termination:
+  target_laps: 1
+  # About 300 s at the 50 Hz Virtual Scan rate. Lap completion itself is based
+  # on one full raceline length, not AWSIM's lapCount transition near the start.
+  max_episode_steps: 15000
+  collision_distance_m: 0.65
+  collision_patience_steps: 3
+  # Virtual Scan runs at about 50 Hz. Give a new/random policy enough time to
+  # start moving (10 s grace + 10 s continuously stopped) before resetting.
+  stuck_speed_mps: 0.15
+  stuck_after_steps: 500
+  stuck_patience_steps: 500
+
+sac:
+  total_timesteps: 300000
+  device: auto
+  checkpoint_freq: 10000
+
+output:
+  checkpoint_dir: ../checkpoints/lap
+  tensorboard_dir: ../logs/lap

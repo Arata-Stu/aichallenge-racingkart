@@ -1,0 +1,21 @@
+/**:
+  ros__parameters:
+    # Ego-centric Cartesian grid. +x is forward and +y is left.
+    grid.x_min: -8.0
+    grid.x_max: 20.0
+    grid.y_min: -16.0
+    grid.y_max: 16.0
+    grid.resolution: 0.2
+
+    # A shorter obstacle scan must differ by at least this distance from the
+    # static scan before it is classified as a dynamic obstacle.
+    dynamic_threshold: 0.15
+    endpoint_radius: 0.2
+    ego_radius: 0.5
+
+    # The paired scan generator publishes matching stamps. A small tolerance
+    # also permits data from independent but synchronized publishers.
+    sync_tolerance_sec: 0.002
+    # Match the 50 Hz VirtualScan source. At 10 m/s, the former 20 Hz cap could
+    # leave the RViz OccupancyGrid about 0.5 m behind the LaserScan.
+    max_publish_hz: 50.0

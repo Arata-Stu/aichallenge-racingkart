@@ -1,0 +1,35 @@
+# Stage 2 template. Do not train this stage until privileged pass/rank reward
+# and an NPC scenario randomizer are connected. Policy observation remains the
+# same obstacle-aware Virtual Scan; raw V2X coordinates must not enter it.
+stage: overtake
+
+ros:
+  scan_topic: /sensing/lidar/scan
+
+observation:
+  num_rays: 1080
+  history_frames: 4
+  max_range_m: 30.0
+
+joy:
+  enabled: true
+  hold_button_index: 2
+  record_interventions: true
+  record_dir: ../interventions/overtake
+
+track:
+  raceline_csv: ../../../workspace/src/aichallenge_submit/simple_trajectory_generator/data/raceline_awsim_30km.csv
+  local_search_back: 8
+  local_search_forward: 16
+  max_progress_per_step_m: 4.0
+  off_track_distance_m: 7.0
+
+reward:
+  # Progress remains useful but must not dominate the future pass/rank reward.
+  progress_scale: 1.0
+  collision_penalty: 200.0
+
+output:
+  checkpoint_dir: ../checkpoints/overtake
+  tensorboard_dir: ../logs/overtake
+

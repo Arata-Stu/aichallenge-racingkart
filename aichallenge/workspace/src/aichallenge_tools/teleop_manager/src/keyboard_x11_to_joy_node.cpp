@@ -10,7 +10,7 @@
 // (teleop.param.yaml `/**:`). The MANUAL-mode button is held at all times.
 //
 // Key bindings:
-//   w / s : accelerate forward / reverse   (held -> speed axis +1 / -1)
+//   w / s : positive / negative throttle   (emulates R2 / L2)
 //   a / d : steer left / right             (held -> steer axis +1 / -1)
 //   1 / 2 : gear DRIVE / REVERSE            (pulse on press)
 //   b     : turbo boost                     (pulse on press)
@@ -35,16 +35,20 @@ public:
   : Node("keyboard_x11_to_joy_node")
   {
     // Shared with teleop_manager via teleop.param.yaml (`/**:`).
-    speed_axis_index_     = declare_parameter<int>("speed_axis_index", 1);
+    positive_throttle_axis_index_ =
+      declare_parameter<int>("positive_throttle_axis_index", 5);
+    negative_throttle_axis_index_ =
+      declare_parameter<int>("negative_throttle_axis_index", 2);
     steer_axis_index_     = declare_parameter<int>("steer_axis_index", 0);
     joy_button_index_     = declare_parameter<int>("joy_button_index", 2);
-    drive_button_index_   = declare_parameter<int>("drive_button_index", 5);
-    reverse_button_index_ = declare_parameter<int>("reverse_button_index", 4);
+    drive_button_index_   = declare_parameter<int>("drive_button_index", -1);
+    reverse_button_index_ = declare_parameter<int>("reverse_button_index", -1);
     boost_button_index_   = declare_parameter<int>("boost_button_index", 8);
 
     publish_hz_ = declare_parameter<double>("publish_hz", 50.0);
 
-    n_axes_ = std::max(speed_axis_index_, steer_axis_index_) + 1;
+    n_axes_ = std::max({positive_throttle_axis_index_,
+                        negative_throttle_axis_index_, steer_axis_index_}) + 1;
     n_buttons_ = std::max({joy_button_index_, drive_button_index_,
                            reverse_button_index_, boost_button_index_}) + 1;
 
@@ -90,6 +94,8 @@ private:
     joy.header.stamp = now();
     joy.axes.assign(n_axes_, 0.0f);
     joy.buttons.assign(n_buttons_, 0);
+    joy.axes[positive_throttle_axis_index_] = 1.0f;
+    joy.axes[negative_throttle_axis_index_] = 1.0f;
     joy.buttons[joy_button_index_] = 1;  // manual mode always engaged
 
     if (display_) {
@@ -100,7 +106,8 @@ private:
       const bool s = pressed(keys, kc_s_);
       const bool a = pressed(keys, kc_a_);
       const bool d = pressed(keys, kc_d_);
-      joy.axes[speed_axis_index_] = (w ? 1.0f : 0.0f) + (s ? -1.0f : 0.0f);
+      joy.axes[positive_throttle_axis_index_] = w ? -1.0f : 1.0f;
+      joy.axes[negative_throttle_axis_index_] = s ? -1.0f : 1.0f;
       joy.axes[steer_axis_index_] = (a ? 1.0f : 0.0f) + (d ? -1.0f : 0.0f);
 
       // Gear/boost pulse once on the press edge.
@@ -122,7 +129,8 @@ private:
   }
 
   // Params (shared with teleop_manager)
-  int speed_axis_index_, steer_axis_index_;
+  int positive_throttle_axis_index_, negative_throttle_axis_index_;
+  int steer_axis_index_;
   int joy_button_index_, drive_button_index_, reverse_button_index_, boost_button_index_;
   double publish_hz_;
   int n_axes_, n_buttons_;

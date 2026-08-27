@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RSU Fusion Studio</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/rsu.css">
+</head>
+<body>
+  <header class="hero">
+    <div><p class="eyebrow">AI CHALLENGE · V2X LEARNING WORKSPACE</p><h1>RSU Fusion <span>Studio</span></h1><p class="subtitle">自車と6台のRSUを、ひとつの空間として確認・学習</p></div>
+    <div class="server-state"><i></i><span id="serverState">接続中</span></div>
+  </header>
+  <main>
+    <section class="metrics" aria-label="dataset summary">
+      <article><span>RECORDINGS</span><strong id="recordingCount">—</strong><small>Bag Manager</small></article>
+      <article><span>TRAIN SAMPLES</span><strong id="trainSamples">—</strong><small id="trainSequences">—</small></article>
+      <article><span>VAL SAMPLES</span><strong id="valSamples">—</strong><small id="valSequences">—</small></article>
+      <article><span>CHECKPOINTS</span><strong id="checkpointCount">—</strong><small>RSU Fusion .pth</small></article>
+    </section>
+    <section class="version-bar"><div><span>ACTIVE DATASET VERSION</span><strong id="activeVersionLabel">default</strong></div><select id="datasetVersion" aria-label="dataset version"></select><small id="versionSummary">読み込み中…</small></section>
+    <nav class="tabs"><button class="active" data-tab="collection">収集メモ</button><button data-tab="explorer">データを見る</button><button data-tab="preprocess">前処理</button><button data-tab="training">学習</button><button data-tab="evaluation">オフライン評価</button><button data-tab="jobs">ジョブとログ <b id="runningBadge" hidden>1</b></button></nav>
+
+    <section class="tab-panel active" id="collection">
+      <div class="panel-heading"><div><p class="section-number">01</p><h2>Collection Notes</h2></div><p>R1で録画開始・L1で停止。停止後の録画をここで分類します。</p></div>
+      <div class="collection-layout">
+        <article class="card collection-recordings">
+          <div class="card-title"><h3>録画</h3><span id="collectionWatchState">停止済みBagを監視中</span></div>
+          <label class="collection-select">対象録画<select id="collectionRecording"></select></label>
+          <div id="collectionRecent" class="collection-recent"></div>
+        </article>
+        <form id="collectionForm" class="card collection-form">
+          <div class="card-title"><h3 id="collectionTitle">録画を選択してください</h3><span id="collectionSavedState">未分類</span></div>
+          <div class="collection-fields">
+            <div class="two-column">
+              <label>カテゴリ<select id="collectionCategory"><option value="free_optimal">通常・最適</option><option value="free_diverse">通常・多様</option><option value="follow">追従</option><option value="pass_left">左追い越し</option><option value="pass_right">右追い越し</option><option value="abort">追い越し断念</option><option value="recovery">復帰操作</option><option value="other">その他</option></select></label>
+              <label>結果<select id="collectionOutcome"><option value="success">成功</option><option value="failure">失敗</option><option value="review">要確認</option></select></label>
+              <label>学習への採用<select id="collectionQuality"><option value="accepted">採用</option><option value="review">要確認</option><option value="rejected">除外</option></select></label>
+              <label>Dataset Version<input id="collectionVersions" type="text" maxlength="500" placeholder="例: interaction-v1, rsu-ablation-v1"></label>
+            </div>
+            <label>その場メモ<textarea id="collectionNotes" maxlength="4000" rows="6" placeholder="接近位置、RSUの見え方、操作ミスなど"></textarea></label>
+            <div class="collection-actions"><small>同じBagを複数Versionへ登録できます。カンマ区切りで入力してください。</small><button class="primary" type="submit">分類とメモを保存</button></div>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="explorer">
+      <div class="panel-heading explorer-heading"><div><p class="section-number">02</p><h2>Fusion Dataset Explorer</h2></div><select id="sequenceSelect" aria-label="sequence"></select></div>
+      <div id="emptyExplorer" class="empty" hidden>RSU前処理済みデータがありません。</div>
+      <div id="visualGrid" class="fusion-layout">
+        <article class="card fusion-card">
+          <div class="card-title fusion-title">
+            <div><h3 id="viewTitle">EGO Scan</h3><span id="frameLabel">frame —</span></div>
+            <div class="fusion-actions"><label>予測Overlay<select id="evaluationOverlay"><option value="">なし</option></select></label><div class="view-switch"><button type="button" data-view="map">FUSION MAP</button><button class="active" type="button" data-view="sensor">SENSOR VIEW</button></div></div>
+          </div>
+          <div class="canvas-wrap"><canvas id="fusionCanvas" width="1000" height="660"></canvas><div id="canvasHint" class="canvas-hint">EGOのローカル座標表示</div><div id="mapLegend" class="map-legend" hidden></div></div>
+          <div id="sensorPills" class="sensor-pills" aria-label="sensor selection"></div>
+          <div class="timeline"><button id="playButton" class="icon-button" title="再生">▶</button><input id="frameSlider" type="range" min="0" max="0" value="0"><input id="frameNumber" type="number" min="0" value="0"></div>
+          <div class="frame-values"><span>STEER <b id="frameSteer">—</b> rad</span><span>ACCEL <b id="frameAccel">—</b></span><span>PRED MODE <b id="frameMode">—</b></span><span>PRED ACCEL <b id="predictedAccel">—</b></span><span>ACTIVE RSU <b id="frameAvailable">—</b></span><span>VIEW <b id="frameView">EGO</b></span></div>
+        </article>
+        <aside class="fusion-sidebar">
+          <article class="card sensor-detail-card"><div class="card-title"><h3>Selected Sensor</h3><span id="selectedSensorStatus" class="sensor-status">—</span></div><div class="sensor-identity"><i id="selectedSensorDot"></i><div><strong id="selectedSensorName">EGO</strong><small id="selectedSensorSubtitle">Virtual Scan</small></div></div><dl id="sensorInspector" class="sensor-inspector"></dl></article>
+          <article class="card"><div class="card-title"><h3>RSU Coverage</h3><span>同期率 / 平均距離</span></div><div id="sensorOverview" class="sensor-overview"></div></article>
+          <article class="card distribution-card"><div class="card-title"><h3>Control Distribution</h3><span>dataset</span></div><div class="histogram-block"><label>STEERING</label><canvas id="steerHistogramCanvas"></canvas></div><div class="histogram-block"><label>ACCELERATION</label><canvas id="accelHistogramCanvas"></canvas></div></article>
+          <article class="card detail-card"><div class="card-title"><h3>Sequence Health</h3><span id="sequenceSplit">—</span></div><dl id="sequenceDetails"></dl></article>
+        </aside>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="preprocess">
+      <div class="panel-heading"><div><p class="section-number">02</p><h2>Preprocess Recordings</h2></div><p>複数録画をまとめて選択できます。</p></div>
+      <div class="version-target card"><label>前処理先Version<select id="preprocessVersion"></select></label><span>または</span><label>新しいVersion名<input id="newVersion" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" placeholder="例: rsu-obstacle-v1"></label><small>新規名が優先されます。</small></div>
+      <article class="card"><div class="recording-head"><span>録画</span><span>サイズ</span><span>TRAIN</span><span>VAL</span></div><div id="recordingList" class="recording-list"></div></article>
+      <form id="preprocessForm" class="action-bar"><label>学習入力<select id="preprocessInputMode"><option value="bev">Semantic BEV（推奨）</option><option value="scan_fusion">従来 Ego＋RSU Scan</option></select></label><label>自車Scan<select id="egoScanTopic"><option value="/sensing/lidar/scan">障害物あり（軌道AI推奨）</option><option value="/sensing/lidar/scan_without_obstacles">障害物なし（従来NPC）</option></select></label><label>既存データ<select id="existingPolicy"><option value="skip">スキップ</option><option value="overwrite">上書き</option></select></label><label>同期許容秒<input id="syncDelta" type="number" min="0" max="10" step=".01" value=".10"></label><button class="primary" type="submit">選択分を一括前処理</button></form>
+    </section>
+
+    <section class="tab-panel" id="training">
+      <div class="panel-heading"><div><p class="section-number">03</p><h2>Train RSU Fusion</h2></div><span class="version-chip" id="trainingVersionLabel">default</span></div>
+      <form id="trainingForm" class="training-grid">
+        <article class="card form-card"><h3>Temporal / Fusion</h3><div class="two-column"><label>学習入力<select id="trainingInputMode"><option value="bev">Semantic BEV（2D CNN）</option><option value="scan_fusion">従来 Ego＋RSU Scan（1D CNN）</option></select></label><label>History frames<input id="historyLen" type="number" min="1" max="100" value="5"></label><label>Top-K RSUs<input id="topK" type="number" min="0" max="6" value="2"></label><label>Distance decay m<input id="distanceDecay" type="number" min=".01" step="1" value="35"></label><label>Trajectory modes<input id="trajectoryModes" type="number" min="1" max="12" value="4"></label><label>評価Waypoint数<input id="trajectorySteps" type="number" min="2" max="100" value="12"></label><label>Waypoint間隔 sec<input id="trajectoryDt" type="number" min=".05" max="2" step=".05" value=".25"></label><label>Bezierアンカー数<input id="trajectoryAnchors" type="number" min="1" max="20" value="4"></label><label>事前学習重み<select id="pretrained"><option value="">使用しない</option></select></label></div><p id="trajectorySpec">3.00秒先まで · Waypoint 0.25秒間隔 · Bezierアンカー 0.75秒間隔。ADE（平均）とFDE（終端）を学習します。</p></article>
+        <article class="card form-card"><h3>Optimization / Loss</h3><div class="two-column"><label>Epochs<input id="epochs" type="number" min="1" value="80"></label><label>Batch size<input id="batchSize" type="number" min="1" value="8"></label><label>Learning rate<input id="learningRate" type="number" min=".00000001" step=".0001" value=".0003"></label><label>Early stop<input id="patience" type="number" min="0" value="12"></label><label>Workers<input id="workers" type="number" min="0" value="4"></label><label>ADE weight<input id="adeWeight" type="number" min="0" max="100" step=".1" value="1.0"></label><label>FDE weight<input id="fdeWeight" type="number" min="0" max="100" step=".1" value="1.5"></label></div></article>
+        <article class="card readiness-card"><h3>Readiness</h3><div id="readiness"></div><button class="primary wide" type="submit">GPU学習を開始</button><div class="checkpoint-list" id="checkpointList"></div></article>
+      </form>
+    </section>
+
+    <section class="tab-panel" id="evaluation">
+      <div class="panel-heading"><div><p class="section-number">04</p><h2>Offline Evaluation</h2></div><span class="version-chip" id="evaluationVersionLabel">default</span></div>
+      <form id="evaluationForm" class="evaluation-layout">
+        <article class="card course-evaluation-card">
+          <div class="card-title course-title"><div><h3>Course Map Evaluation</h3><span id="courseEvaluationName">評価結果を選択してください</span></div><label>Sequence<select id="courseSequence"></select></label></div>
+          <div class="course-canvas-wrap"><canvas id="courseMapCanvas" width="1400" height="720"></canvas><div class="course-legend"><span><i class="lane"></i>COURSE</span><span><i class="route"></i>DRIVEN</span><span><i class="target"></i>TARGET</span><span><i class="selected"></i>SELECTED</span><span><i class="error"></i>ADE HEAT</span></div><div id="courseHint" class="canvas-hint">評価履歴を選択するとコース上に予測を表示します</div></div>
+          <div class="timeline"><button id="coursePlayButton" class="icon-button" type="button" title="再生">▶</button><input id="courseFrameSlider" type="range" min="0" max="0" value="0"><input id="courseFrameNumber" type="number" min="0" value="0"></div>
+          <div class="frame-values"><span>FRAME <b id="courseFrameLabel">—</b></span><span>MODE <b id="courseMode">—</b></span><span>ADE <b id="courseAde">—</b> m</span><span>FDE <b id="courseFde">—</b> m</span><span>PRED ACCEL <b id="courseAccel">—</b></span><span>TEACHER <b id="courseTargetAccel">—</b></span></div>
+        </article>
+        <article class="card form-card"><h3>評価設定</h3><div class="two-column"><label>Checkpoint<select id="evaluationCheckpoint"></select></label><label>Split<select id="evaluationSplit"><option value="val">Validation</option><option value="train">Train</option></select></label><label>Device<select id="evaluationDevice"><option value="auto">Auto</option><option value="cuda">CUDA</option><option value="cpu">CPU</option></select></label><label>Batch size<input id="evaluationBatch" type="number" min="1" value="64"></label></div><button class="primary wide" type="submit">評価と予測出力を開始</button></article>
+        <article class="card evaluation-results"><div class="card-title"><h3>評価履歴</h3><span>ADE / FDE / Control MAE</span></div><div id="evaluationList" class="evaluation-list"></div></article>
+      </form>
+    </section>
+
+    <section class="tab-panel" id="jobs"><div class="panel-heading"><div><p class="section-number">05</p><h2>Jobs &amp; Logs</h2></div><button id="refreshButton" class="secondary">更新</button></div><div class="jobs-grid"><div id="jobList" class="job-list"></div><article class="card log-card"><div class="card-title"><h3 id="logTitle">ジョブを選択</h3><button id="cancelJob" class="danger" hidden>停止</button></div><pre id="jobLog">まだログはありません。</pre></article></div></section>
+  </main>
+  <div id="toast" class="toast"></div>
+  <script>window.addEventListener("error",event=>{const state=document.getElementById("serverState");if(state)state.textContent=`UI ERROR · ${event.message} · line ${event.lineno}`;});</script>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -51,9 +51,11 @@ private:
   int reset_button_index_;
   int boost_button_index_;
   int drive_button_index_, reverse_button_index_;
-  int speed_axis_index_, steer_axis_index_;
+  int positive_throttle_axis_index_, negative_throttle_axis_index_;
+  int steer_axis_index_;
   int dpad_lr_axis_index_;
   int dpad_ud_axis_index_;
+  double throttle_deadzone_;
   double timer_hz_;
   double joy_timeout_sec_;
 

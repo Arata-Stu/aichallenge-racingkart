@@ -21,6 +21,7 @@
 - `log-design.md` — `/output` 配下へログを集約する設計（compose / `run_evaluation.bash` の出力レイアウト）。
 - `makefile-target-naming.md` — Makefile ターゲットの `<service>-<command>` 命名ガイドライン。
 - `mpc-integration.md` — `multi_purpose_mpc_ros` のインテグレーション設計。
+- `stuck-recovery.md` — MPCのスタック検出、REVERSE後退、DRIVE復帰、コマンド競合防止の設計。
 
 ## docs/guide/ 一覧
 

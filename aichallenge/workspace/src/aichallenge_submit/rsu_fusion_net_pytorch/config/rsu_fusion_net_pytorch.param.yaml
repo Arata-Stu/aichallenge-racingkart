@@ -1,0 +1,34 @@
+/**:
+  ros__parameters:
+    model:
+      checkpoint_path: ""
+    device: "auto"
+    ego_scan_topic: "/sensing/lidar/scan"
+    pose_topic: "/localization/pose_with_covariance"
+    velocity_topic: "/vehicle/status/velocity_status"
+    control_cmd_topic: "/control/command/control_cmd"
+    rsu_timeout_sec: 0.2
+    # Competition mode: acceleration and steering are both learned.
+    control_mode: "ai"
+    acceleration_scale: 1.0
+    steering_scale: 1.0
+    debug: false
+    log_interval_sec: 5.0
+    trajectory_frame: "base_link"
+    selected_trajectory_topic: "~/selected_trajectory"
+    candidate_trajectories_topic: "~/candidate_trajectories"
+    mode_probabilities_topic: "~/mode_probabilities"
+    rsu_topics:
+      - /rsu/curve_01/scan
+      - /rsu/curve_02/scan
+      - /rsu/curve_03/scan
+      - /rsu/curve_04/scan
+      - /rsu/curve_05/scan
+      - /rsu/curve_06/scan
+    # Repeated x, y, yaw_deg triples in the same order as rsu_topics.
+    rsu_poses: [89620.233296, 43157.347478, 111.0,
+                89639.094992, 43147.310706, -60.0,
+                89629.923709, 43179.151500, 110.0,
+                89655.187999, 43180.362834, 30.0,
+                89655.014956, 43167.730346, -130.0,
+                89665.916671, 43154.751761, 5.0]

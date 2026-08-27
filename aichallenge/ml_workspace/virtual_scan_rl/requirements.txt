@@ -1,0 +1,7 @@
+gymnasium>=1.0
+numpy>=1.23
+PyYAML>=6.0
+stable-baselines3>=2.3
+tensorboard>=2.12
+torch>=2.0
+

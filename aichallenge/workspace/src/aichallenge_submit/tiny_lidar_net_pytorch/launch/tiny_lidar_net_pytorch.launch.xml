@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <arg name="param_file" default="$(find-pkg-share tiny_lidar_net_pytorch)/config/tiny_lidar_net_pytorch.param.yaml"/>
+  <arg name="checkpoint_path" default="$(env TINY_LIDAR_NET_PYTORCH_CHECKPOINT '')"/>
+  <arg name="device" default="auto"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="scan_topic" default="/sensing/lidar/scan"/>
+  <arg name="velocity_topic" default="/vehicle/status/velocity_status"/>
+  <arg name="control_cmd_topic" default="/control/command/control_cmd"/>
+
+  <node pkg="tiny_lidar_net_pytorch"
+        exec="ros_node.py"
+        name="tiny_lidar_net_pytorch_node"
+        output="screen">
+    <param from="$(var param_file)"/>
+    <param name="model.checkpoint_path" value="$(var checkpoint_path)"/>
+    <param name="device" value="$(var device)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <remap from="/scan" to="$(var scan_topic)"/>
+    <remap from="/velocity" to="$(var velocity_topic)"/>
+    <remap from="/control/command/control_cmd" to="$(var control_cmd_topic)"/>
+  </node>
+</launch>

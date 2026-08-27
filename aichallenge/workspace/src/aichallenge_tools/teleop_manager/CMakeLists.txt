@@ -25,6 +25,15 @@ ament_auto_add_executable(keyboard_x11_to_joy_node
 target_include_directories(keyboard_x11_to_joy_node PRIVATE ${X11_INCLUDE_DIR})
 target_link_libraries(keyboard_x11_to_joy_node ${X11_LIBRARIES})
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(test_joy_input
+    test/test_joy_input.cpp
+  )
+  target_include_directories(test_joy_input PRIVATE include)
+endif()
+
 ament_auto_package(INSTALL_TO_SHARE
   config
   launch

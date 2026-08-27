@@ -1,6 +1,8 @@
 #include "teleop_manager/teleop_manager_node.hpp"
+#include "teleop_manager/joy_input.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <memory>
 #include <utility> // for std::move
@@ -34,16 +36,18 @@ TeleopManagerNode::TeleopManagerNode()
   declare_parameter<double>("steer_scale", 1.0);
   declare_parameter<int>("joy_button_index",   2);
   declare_parameter<int>("ack_button_index",   3);
-  declare_parameter<int>("start_button_index", 9);
-  declare_parameter<int>("stop_button_index",  8);
+  declare_parameter<int>("start_button_index", 5);  // 録画開始: R1
+  declare_parameter<int>("stop_button_index",  4);  // 録画終了: L1
   declare_parameter<int>("awsim_button_index", 2);
   declare_parameter<int>("reset_button_index", 7);
-  declare_parameter<int>("drive_button_index", 5);    // ギア: DRIVE(前進=2)
-  declare_parameter<int>("reverse_button_index", 4);  // ギア: REVERSE(後進=20)
+  declare_parameter<int>("drive_button_index", -1);    // 負値なら未割り当て
+  declare_parameter<int>("reverse_button_index", -1);  // 負値なら未割り当て
   declare_parameter<int>("boost_button_index", 8);    // AWSIM ターボブースト(トグル)
   declare_parameter<double>("timer_hz", 40.0);
   declare_parameter<double>("joy_timeout_sec", 0.5);
-  declare_parameter<int>("speed_axis_index", 1);  // アクセル: 左スティック縦
+  declare_parameter<int>("positive_throttle_axis_index", 5);  // R2
+  declare_parameter<int>("negative_throttle_axis_index", 2);  // L2
+  declare_parameter<double>("throttle_deadzone", 0.05);
   declare_parameter<int>("steer_axis_index", 0);  // ステアリング: 左スティック横
   declare_parameter<int>("dpad_lr_axis_index", 6);
   declare_parameter<int>("dpad_ud_axis_index", 7); 
@@ -70,7 +74,9 @@ TeleopManagerNode::TeleopManagerNode()
   get_parameter("boost_button_index", boost_button_index_);
   get_parameter("timer_hz", timer_hz_);
   get_parameter("joy_timeout_sec", joy_timeout_sec_);
-  get_parameter("speed_axis_index", speed_axis_index_);
+  get_parameter("positive_throttle_axis_index", positive_throttle_axis_index_);
+  get_parameter("negative_throttle_axis_index", negative_throttle_axis_index_);
+  get_parameter("throttle_deadzone", throttle_deadzone_);
   get_parameter("steer_axis_index", steer_axis_index_);
   get_parameter("dpad_lr_axis_index", dpad_lr_axis_index_);
   get_parameter("dpad_ud_axis_index", dpad_ud_axis_index_);
@@ -105,7 +111,10 @@ TeleopManagerNode::TeleopManagerNode()
   awsim_trigger_pub_ = create_publisher<std_msgs::msg::Bool>("/awsim/control_mode_request_topic", 10);
   awsim_boost_pub_ = create_publisher<std_msgs::msg::Float32MultiArray>("/awsim/cmd", 10);
 
-  reset_publisher_ = create_publisher<std_msgs::msg::Empty>("/admin/awsim/reset", 10);
+  // This request stays in the player's ROS domain. The reset domain bridge
+  // forwards it to DOMAIN 0 as /admin/awsim/reset without opening the Joy
+  // device a second time.
+  reset_publisher_ = create_publisher<std_msgs::msg::Empty>("/awsim/reset", 10);
   initialpose_publisher_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("/initialpose", 10);
 
   
@@ -155,9 +164,11 @@ void TeleopManagerNode::joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg)
   last_joy_msg_time_ = this->get_clock()->now();
 
   // 1) Start/stop/AWSIM/Reset buttons (with debounce)
-  bool curr_start = (static_cast<int>(msg->buttons.size()) > start_button_index_
+  bool curr_start = (start_button_index_ >= 0 &&
+                     static_cast<int>(msg->buttons.size()) > start_button_index_
                      && msg->buttons[start_button_index_] == 1);
-  bool curr_stop  = (static_cast<int>(msg->buttons.size()) > stop_button_index_
+  bool curr_stop  = (stop_button_index_ >= 0 &&
+                     static_cast<int>(msg->buttons.size()) > stop_button_index_
                      && msg->buttons[stop_button_index_]  == 1);
   
   if (check_button_press(curr_start, prev_start_pressed_)) {
@@ -169,7 +180,8 @@ void TeleopManagerNode::joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg)
     trigger_pub_->publish(b);
   }
 
-  bool curr_awsim_button = (static_cast<int>(msg->buttons.size()) > awsim_button_index_
+  bool curr_awsim_button = (awsim_button_index_ >= 0 &&
+                            static_cast<int>(msg->buttons.size()) > awsim_button_index_
                             && msg->buttons[awsim_button_index_] == 1);
   if (check_button_press(curr_awsim_button, prev_awsim_button_pressed_)) {
     std_msgs::msg::Bool b; b.data = true;
@@ -177,12 +189,13 @@ void TeleopManagerNode::joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg)
     RCLCPP_INFO(get_logger(), "Published true to /awsim/control_mode_request_topic");
   }
 
-  bool curr_reset_button = (static_cast<int>(msg->buttons.size()) > reset_button_index_
+  bool curr_reset_button = (reset_button_index_ >= 0 &&
+                            static_cast<int>(msg->buttons.size()) > reset_button_index_
                             && msg->buttons[reset_button_index_] == 1);
   if (check_button_press(curr_reset_button, prev_reset_button_pressed_)) {
     auto empty_msg = std::make_unique<std_msgs::msg::Empty>();
     reset_publisher_->publish(std::move(empty_msg));
-    RCLCPP_INFO(get_logger(), "Published Empty message to /admin/awsim/reset");
+    RCLCPP_INFO(get_logger(), "Published AWSIM reset request to /awsim/reset");
     auto pose_msg = std::make_unique<geometry_msgs::msg::PoseWithCovarianceStamped>(reset_pose_msg_);
   
     // pose_msg->header.stamp = this->get_clock()->now();
@@ -191,9 +204,11 @@ void TeleopManagerNode::joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg)
   }
 
   // 1b) Gear selection (DRIVE / REVERSE only, with debounce)
-  bool curr_drive_button = (static_cast<int>(msg->buttons.size()) > drive_button_index_
+  bool curr_drive_button = (drive_button_index_ >= 0 &&
+                            static_cast<int>(msg->buttons.size()) > drive_button_index_
                             && msg->buttons[drive_button_index_] == 1);
-  bool curr_reverse_button = (static_cast<int>(msg->buttons.size()) > reverse_button_index_
+  bool curr_reverse_button = (reverse_button_index_ >= 0 &&
+                              static_cast<int>(msg->buttons.size()) > reverse_button_index_
                               && msg->buttons[reverse_button_index_] == 1);
   if (check_button_press(curr_drive_button, prev_drive_button_pressed_)) {
     publish_gear(autoware_auto_vehicle_msgs::msg::GearCommand::DRIVE);     // 2
@@ -205,7 +220,8 @@ void TeleopManagerNode::joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg)
   }
 
   // 1c) AWSIM turbo boost (send [1.0] then [0.0] on each press)
-  bool curr_boost_button = (static_cast<int>(msg->buttons.size()) > boost_button_index_
+  bool curr_boost_button = (boost_button_index_ >= 0 &&
+                            static_cast<int>(msg->buttons.size()) > boost_button_index_
                             && msg->buttons[boost_button_index_] == 1);
   if (check_button_press(curr_boost_button, prev_boost_button_pressed_)) {
     publish_turbo();
@@ -213,9 +229,11 @@ void TeleopManagerNode::joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg)
   }
 
   // 2) Mode selection
-  bool joy_pressed = (static_cast<int>(msg->buttons.size()) > joy_button_index_
+  bool joy_pressed = (joy_button_index_ >= 0 &&
+                      static_cast<int>(msg->buttons.size()) > joy_button_index_
                       && msg->buttons[joy_button_index_] == 1);
-  bool ack_pressed = (static_cast<int>(msg->buttons.size()) > ack_button_index_
+  bool ack_pressed = (ack_button_index_ >= 0 &&
+                      static_cast<int>(msg->buttons.size()) > ack_button_index_
                       && msg->buttons[ack_button_index_] == 1);
   
   if (ack_pressed) {
@@ -228,7 +246,19 @@ void TeleopManagerNode::joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg)
 
   // 3) Calculate speed/steer in Joy mode (using current scales)
   if (joy_active_) {
-    double raw_speed = (static_cast<int>(msg->axes.size()) > speed_axis_index_ ? msg->axes[speed_axis_index_] : 0.0);
+    // Missing trigger axes are treated as released. Each trigger is +1.0 when
+    // released and -1.0 when fully pressed; R2 contributes positive throttle
+    // and L2 contributes negative throttle.
+    double positive_axis =
+      (positive_throttle_axis_index_ >= 0 &&
+      static_cast<int>(msg->axes.size()) > positive_throttle_axis_index_) ?
+      msg->axes[positive_throttle_axis_index_] : 1.0;
+    double negative_axis =
+      (negative_throttle_axis_index_ >= 0 &&
+      static_cast<int>(msg->axes.size()) > negative_throttle_axis_index_) ?
+      msg->axes[negative_throttle_axis_index_] : 1.0;
+    double raw_speed = teleop_manager::signed_throttle(
+      positive_axis, negative_axis, throttle_deadzone_);
     double raw_steer = (static_cast<int>(msg->axes.size()) > steer_axis_index_ ? msg->axes[steer_axis_index_] : 0.0);
     joy_speed_ = raw_speed * speed_scale_;
     joy_steer_ = raw_steer * steer_scale_;

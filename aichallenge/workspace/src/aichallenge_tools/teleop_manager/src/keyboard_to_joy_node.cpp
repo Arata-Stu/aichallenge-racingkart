@@ -12,7 +12,7 @@
 // W/A/S/D keys.
 //
 // Key bindings:
-//   w / s : accelerate forward / reverse   (held -> speed axis +1 / -1)
+//   w / s : positive / negative throttle   (emulates R2 / L2)
 //   a / d : steer left / right             (held -> steer axis +1 / -1)
 //   1 / 2 : gear DRIVE / REVERSE            (pulse on press)
 //   b     : turbo boost                     (pulse on press)
@@ -52,17 +52,21 @@ public:
   : Node("keyboard_to_joy_node")
   {
     // Shared with teleop_manager via teleop.param.yaml (`/**:`).
-    speed_axis_index_     = declare_parameter<int>("speed_axis_index", 1);
+    positive_throttle_axis_index_ =
+      declare_parameter<int>("positive_throttle_axis_index", 5);
+    negative_throttle_axis_index_ =
+      declare_parameter<int>("negative_throttle_axis_index", 2);
     steer_axis_index_     = declare_parameter<int>("steer_axis_index", 0);
     joy_button_index_     = declare_parameter<int>("joy_button_index", 2);
-    drive_button_index_   = declare_parameter<int>("drive_button_index", 5);
-    reverse_button_index_ = declare_parameter<int>("reverse_button_index", 4);
+    drive_button_index_   = declare_parameter<int>("drive_button_index", -1);
+    reverse_button_index_ = declare_parameter<int>("reverse_button_index", -1);
     boost_button_index_   = declare_parameter<int>("boost_button_index", 8);
 
     publish_hz_  = declare_parameter<double>("publish_hz", 50.0);
     device_path_ = declare_parameter<std::string>("device_path", "");
 
-    n_axes_ = std::max(speed_axis_index_, steer_axis_index_) + 1;
+    n_axes_ = std::max({positive_throttle_axis_index_,
+                        negative_throttle_axis_index_, steer_axis_index_}) + 1;
     n_buttons_ = std::max({joy_button_index_, drive_button_index_,
                            reverse_button_index_, boost_button_index_}) + 1;
 
@@ -134,8 +138,9 @@ private:
     joy.axes.assign(n_axes_, 0.0f);
     joy.buttons.assign(n_buttons_, 0);
 
-    // Held W/A/S/D map straight to axis values (opposite keys cancel).
-    joy.axes[speed_axis_index_] = (w_ ? 1.0f : 0.0f) + (s_ ? -1.0f : 0.0f);
+    // Emulate the DualShock trigger convention: released=+1, pressed=-1.
+    joy.axes[positive_throttle_axis_index_] = w_ ? -1.0f : 1.0f;
+    joy.axes[negative_throttle_axis_index_] = s_ ? -1.0f : 1.0f;
     joy.axes[steer_axis_index_] = (a_ ? 1.0f : 0.0f) + (d_ ? -1.0f : 0.0f);
 
     // Manual mode is always engaged.
@@ -171,7 +176,8 @@ private:
   }
 
   // Params (shared with teleop_manager)
-  int speed_axis_index_, steer_axis_index_;
+  int positive_throttle_axis_index_, negative_throttle_axis_index_;
+  int steer_axis_index_;
   int joy_button_index_, drive_button_index_, reverse_button_index_, boost_button_index_;
   double publish_hz_;
   std::string device_path_;

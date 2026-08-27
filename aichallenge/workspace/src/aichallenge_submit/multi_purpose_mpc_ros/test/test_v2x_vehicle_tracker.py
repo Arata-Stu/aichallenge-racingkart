@@ -5,7 +5,10 @@ from typing import List
 
 import pytest
 
-from multi_purpose_mpc_ros.v2x_vehicle_tracker import V2XVehicleTracker
+from multi_purpose_mpc_ros.v2x_vehicle_tracker import (
+    V2XVehicleTracker,
+    vehicle_id_from_domain_id,
+)
 
 
 # Lightweight stand-ins for v2x_msgs / std_msgs / geometry_msgs so tests
@@ -141,6 +144,23 @@ def test_predict_all_returns_only_active_vehicles():
     assert set(out.keys()) == {"d2"}
     assert out["d2"][0] == pytest.approx((5.0, 0.0))
     assert out["d2"][1] == pytest.approx((15.0, 0.0))
+
+
+def test_predict_all_excludes_ego_vehicle():
+    tracker = V2XVehicleTracker(v_max_safety=30.0, position_jump_threshold=20.0)
+    tracker.update(_msg(0.0, [("d2", 1.0, 2.0), ("d4", 3.0, 4.0)]))
+
+    out = tracker.predict_all([0.0], excluded_vehicle_ids={"d4"})
+
+    assert set(out) == {"d2"}
+
+
+@pytest.mark.parametrize(
+    ("domain_id", "expected"),
+    [("1", "d1"), ("4", "d4"), ("0", None), ("", None), ("invalid", None)],
+)
+def test_vehicle_id_from_domain_id(domain_id, expected):
+    assert vehicle_id_from_domain_id(domain_id) == expected
 
 
 @dataclass

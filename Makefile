@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 
 .PHONY: autoware-build autoware-vehicle autoware-simulator autoware-request-initialpose autoware-request-control  awsim-request-start awsim-request-reset autoware-driver-zenoh autoware-driver-zenoh-rosbag \
-	simulator dev dev2 dev3 dev4 driver zenoh download rviz2 down down_all ps autoware-attach autoware-bash eval
+	simulator dev dev2 dev3 dev4 driver zenoh download rviz2 down down_all ps autoware-attach autoware-bash tiny-lidar-training tiny-lidar-dashboard rsu-fusion-dashboard eval
 
 # Used by docker-compose.yml for build/eval artifact ownership.
 HOST_UID ?= $(shell id -u)
@@ -136,6 +136,18 @@ autoware-attach:
 
 autoware-bash:
 	CMD="bash --rcfile /etc/skel/.bashrc -i" docker compose run --rm --no-deps autoware-command
+
+# TinyLiDARNet preprocessing/training Terminator
+tiny-lidar-training:
+	CMD="/aichallenge/utils/run_tiny_lidar_training_terminator.bash" docker compose run --rm --no-deps autoware-command
+
+# TinyLiDARNet dataset/training web dashboard (http://localhost:8765)
+tiny-lidar-dashboard:
+	CMD="/aichallenge/ml_workspace/tiny_lidar_net_pytorch/run_dashboard.bash" docker compose run --rm --no-deps autoware-command
+
+# RSU fusion dataset/training web dashboard (http://localhost:8766)
+rsu-fusion-dashboard:
+	CMD="/aichallenge/ml_workspace/rsu_fusion_net/run_dashboard.bash" docker compose run --rm --no-deps autoware-command
 
 # Download submission data by asking for credentials interactively
 # Usage:

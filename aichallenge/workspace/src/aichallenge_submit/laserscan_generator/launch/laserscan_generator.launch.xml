@@ -6,6 +6,9 @@
   <arg name="use_sim_time" default="true"/>
   <arg name="pose_topic" default="/localization/pose_with_covariance"/>
   <arg name="scan_topic" default="/sensing/lidar/scan"/>
+  <arg name="scan_without_obstacles_topic" default="/sensing/lidar/scan_without_obstacles"/>
+  <arg name="enable_v2x_obstacles" default="false"/>
+  <arg name="v2x_topic" default="/v2x/vehicle_positions"/>
   
   <node pkg="tf2_ros"
         exec="static_transform_publisher"
@@ -22,11 +25,14 @@
 
     <param from="$(var laserscan_generator_param)"/>
     <param name="csv_path" value="$(var csv_path)"/>
+    <param name="enable_v2x_obstacles" value="$(var enable_v2x_obstacles)"/>
     
     <param name="use_sim_time" value="$(var use_sim_time)"/>
 
     <remap from="/localization/pose_with_covariance" to="$(var pose_topic)"/>
     <remap from="/scan" to="$(var scan_topic)"/>
+    <remap from="/scan_without_obstacles" to="$(var scan_without_obstacles_topic)"/>
+    <remap from="/v2x/vehicle_positions" to="$(var v2x_topic)"/>
     
   </node>
 

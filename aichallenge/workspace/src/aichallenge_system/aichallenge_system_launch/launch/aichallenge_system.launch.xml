@@ -10,6 +10,7 @@
     <arg name="domain_id" default="0"/>
     <arg name="control_method" default="mpc"/>
     <arg name="use_obstacle_avoidance" default="false"/>
+    <arg name="enable_stuck_recovery" default="$(var simulation)"/>
 
     <let name="domain_id" value="$(var domain_id)"/>
     <let name="rviz_config" value="$(find-pkg-share aichallenge_system_launch)/config/autoware_vehicle.rviz"/>
@@ -27,6 +28,7 @@
     <log message=" - domain_id: $(var domain_id)"/>
     <log message=" - control_method: $(var control_method)"/>
     <log message=" - use_obstacle_avoidance: $(var use_obstacle_avoidance)"/>
+    <log message=" - enable_stuck_recovery: $(var enable_stuck_recovery)"/>
 
     <!-- Main module of AI challenge 2025. -->
     <include file="$(find-pkg-share aichallenge_submit_launch)/launch/aichallenge_submit.launch.xml" >
@@ -37,6 +39,7 @@
         <arg name="run_rviz" value="$(var run_rviz)"/>
         <arg name="control_method" value="$(var control_method)"/>
         <arg name="use_obstacle_avoidance" value="$(var use_obstacle_avoidance)"/>
+        <arg name="enable_stuck_recovery" value="$(var enable_stuck_recovery)"/>
     </include>
 
     <!-- Visualization. -->

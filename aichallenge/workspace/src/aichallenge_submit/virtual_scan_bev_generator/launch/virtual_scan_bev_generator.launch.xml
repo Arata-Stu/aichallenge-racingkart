@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="param_file" default="$(find-pkg-share virtual_scan_bev_generator)/config/virtual_scan_bev_generator.param.yaml"/>
+  <arg name="scan_topic" default="/sensing/lidar/scan"/>
+  <arg name="scan_without_obstacles_topic" default="/sensing/lidar/scan_without_obstacles"/>
+  <arg name="bev_topic" default="/perception/virtual_scan_bev/image"/>
+  <arg name="debug_image_topic" default="/perception/virtual_scan_bev/debug_image"/>
+  <arg name="occupancy_grid_topic" default="/perception/virtual_scan_bev/occupancy_grid"/>
+
+  <node pkg="virtual_scan_bev_generator"
+        exec="virtual_scan_bev_generator_node"
+        name="virtual_scan_bev_generator_node"
+        output="screen">
+    <param from="$(var param_file)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <remap from="/scan" to="$(var scan_topic)"/>
+    <remap from="/scan_without_obstacles" to="$(var scan_without_obstacles_topic)"/>
+    <remap from="/bev/image" to="$(var bev_topic)"/>
+    <remap from="/bev/debug_image" to="$(var debug_image_topic)"/>
+    <remap from="/bev/occupancy_grid" to="$(var occupancy_grid_topic)"/>
+  </node>
+</launch>

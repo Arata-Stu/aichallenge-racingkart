@@ -1,0 +1,115 @@
+:root {
+  --lime: #54e6d0;
+  --cyan: #c9fa3f;
+  --rsu-1: #ffb347;
+  --rsu-2: #ff6b79;
+  --rsu-3: #b58cff;
+  --rsu-4: #55b8ff;
+  --rsu-5: #ff79cf;
+  --rsu-6: #74e66c;
+}
+
+.hero h1 span { color: var(--lime); }
+.fusion-layout { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(350px, .82fr); gap: 18px; align-items: start; }
+.fusion-card { position: sticky; top: 12px; }
+.fusion-sidebar { display: grid; gap: 18px; }
+.fusion-title { gap: 16px; }
+.fusion-title > div:first-child { display: grid; gap: 4px; }
+.fusion-actions { display: flex; align-items: end; gap: 10px; }
+.fusion-actions > label { display: grid; gap: 4px; color: var(--muted); font: 700 8px ui-monospace, monospace; letter-spacing: .08em; }
+.fusion-actions select { max-width: 280px; padding: 7px 9px; }
+.view-switch { display: flex; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: #0b100f; }
+.view-switch button { border: 0; border-radius: 6px; padding: 7px 10px; color: var(--muted); background: transparent; font: 700 9px ui-monospace, monospace; letter-spacing: .08em; }
+.view-switch button.active { color: #0b1110; background: var(--lime); }
+
+.canvas-wrap { position: relative; min-height: 610px; background: radial-gradient(circle at 50% 56%, #14201d 0, #0a0e0d 62%); }
+#fusionCanvas { width: 100%; height: min(64vh, 650px); min-height: 610px; }
+.canvas-hint { position: absolute; left: 16px; top: 14px; padding: 7px 9px; border: 1px solid #2b3935; border-radius: 7px; color: #82908a; background: rgb(8 12 11 / 78%); font: 10px ui-monospace, monospace; pointer-events: none; }
+.map-legend { position: absolute; right: 14px; bottom: 14px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px 10px; max-width: 390px; padding: 9px 11px; border: 1px solid #2b3935; border-radius: 8px; background: rgb(8 12 11 / 86%); pointer-events: none; }
+.map-legend[hidden] { display: none; }
+.map-legend span { display: flex; align-items: center; gap: 5px; color: var(--muted); font: 9px ui-monospace, monospace; }
+.map-legend i { width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+
+.sensor-pills { display: grid; grid-template-columns: repeat(7, minmax(84px, 1fr)); gap: 7px; padding: 12px 14px; border-top: 1px solid var(--line); }
+.sensor-pills button { min-width: 0; padding: 9px 7px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: #0c1110; text-align: left; }
+.sensor-pills button strong, .sensor-pills button small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sensor-pills button strong { color: var(--sensor-color, var(--text)); font: 700 11px ui-monospace, monospace; }
+.sensor-pills button small { margin-top: 3px; font-size: 9px; }
+.sensor-pills button.active { border-color: var(--sensor-color, var(--lime)); background: #15201e; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sensor-color, var(--lime)) 30%, transparent); }
+.sensor-pills button.unavailable { opacity: .42; }
+
+.sensor-status { padding: 4px 7px; border-radius: 5px; background: #17221f; }
+.sensor-status.available { color: var(--lime); }
+.sensor-status.unavailable { color: var(--orange); }
+.sensor-identity { padding: 17px 18px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); }
+.sensor-identity i { width: 13px; height: 13px; border-radius: 50%; background: var(--sensor-color, var(--lime)); box-shadow: 0 0 14px var(--sensor-color, var(--lime)); }
+.sensor-identity strong, .sensor-identity small { display: block; }
+.sensor-identity strong { font-size: 20px; }
+.sensor-identity small { margin-top: 3px; color: var(--muted); font-size: 11px; }
+.sensor-inspector { margin: 0; padding: 10px 18px 15px; }
+.sensor-inspector div { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #232a28; }
+.sensor-inspector div:last-child { border: 0; }
+.sensor-inspector dt { color: var(--muted); font-size: 11px; }
+.sensor-inspector dd { margin: 0; color: var(--text); font: 11px ui-monospace, monospace; }
+
+.sensor-overview { padding: 10px 14px 14px; display: grid; gap: 8px; }
+.sensor-row { display: grid; grid-template-columns: 50px 1fr 55px; gap: 9px; align-items: center; padding: 6px 4px; color: var(--muted); font-size: 10px; }
+.sensor-row > b { color: var(--sensor-color); font: 700 10px ui-monospace, monospace; }
+.coverage-track { height: 6px; overflow: hidden; border-radius: 9px; background: #080c0b; }
+.coverage-track i { display: block; height: 100%; border-radius: inherit; background: var(--sensor-color); box-shadow: 0 0 9px var(--sensor-color); }
+.sensor-row > span { text-align: right; font: 10px ui-monospace, monospace; }
+
+.distribution-card { padding-bottom: 10px; }
+.histogram-block { padding: 11px 14px 5px; }
+.histogram-block + .histogram-block { border-top: 1px solid #232a28; }
+.histogram-block label { margin-bottom: 4px; color: var(--muted); font: 700 9px ui-monospace, monospace; letter-spacing: .1em; }
+.histogram-block canvas { height: 105px; }
+.checkpoint-list { max-height: 240px; overflow: auto; }
+.checkpoint-list div { padding: 10px; border-bottom: 1px solid var(--line); color: var(--muted); font: 11px ui-monospace, monospace; }
+.form-card > p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.evaluation-layout { display: grid; grid-template-columns: minmax(320px, .7fr) minmax(480px, 1.3fr); gap: 18px; align-items: start; }
+.evaluation-results { min-height: 310px; }
+.evaluation-list { display: grid; gap: 1px; background: var(--line); }
+.evaluation-list button { display: grid; gap: 7px; width: 100%; padding: 14px 17px; border: 0; background: #0d1211; color: var(--muted); text-align: left; }
+.evaluation-list button:hover { background: #151d1b; }
+.evaluation-list button b { color: var(--text); font: 700 11px ui-monospace, monospace; }
+.evaluation-list button span { font: 10px ui-monospace, monospace; }
+.evaluation-list button strong { color: var(--lime); }
+.evaluation-list button.active { background: #16231f; box-shadow: inset 3px 0 var(--lime); }
+.course-evaluation-card { grid-column: 1 / -1; overflow: hidden; }
+.course-title > div { display: grid; gap: 4px; }
+.course-title > label { min-width: min(420px, 45vw); color: var(--muted); font: 700 9px ui-monospace, monospace; letter-spacing: .08em; }
+.course-title select { display: block; width: 100%; margin-top: 5px; }
+.course-canvas-wrap { position: relative; min-height: 580px; background: radial-gradient(circle at 50% 50%, #14201d 0, #080d0c 70%); }
+#courseMapCanvas { display: block; width: 100%; height: min(66vh, 720px); min-height: 580px; cursor: crosshair; }
+.course-legend { position: absolute; right: 14px; bottom: 14px; display: flex; flex-wrap: wrap; gap: 6px 13px; padding: 9px 11px; border: 1px solid #2b3935; border-radius: 8px; background: rgb(8 12 11 / 88%); color: var(--muted); font: 9px ui-monospace, monospace; }
+.course-legend span { display: flex; align-items: center; gap: 5px; }
+.course-legend i { display: inline-block; width: 18px; height: 3px; border-radius: 3px; }
+.course-legend .lane { background: #53615c; }
+.course-legend .route { background: #54e6d0; }
+.course-legend .target { height: 0; border-top: 2px dashed #fff; }
+.course-legend .selected { background: #c9fa3f; }
+.course-legend .error { background: linear-gradient(90deg, #54e6d0, #ffd052, #ff5f67); }
+input[type="text"], #newVersion { color: var(--text); background: #0b0f0e; border: 1px solid #35403d; border-radius: 8px; padding: 10px 12px; outline: none; }
+
+@media (max-width: 1180px) {
+  .fusion-layout { grid-template-columns: 1fr; }
+  .fusion-card { position: static; }
+  .fusion-sidebar { grid-template-columns: 1fr 1fr; }
+  .evaluation-layout { grid-template-columns: 1fr; }
+  .sensor-pills { grid-template-columns: repeat(4, 1fr); }
+}
+@media (max-width: 700px) {
+  .fusion-sidebar { grid-template-columns: 1fr; }
+  .fusion-title { align-items: flex-start; flex-direction: column; }
+  .fusion-actions { width: 100%; flex-direction: column; align-items: stretch; }
+  .fusion-actions select { max-width: none; width: 100%; }
+  .course-title { align-items: stretch; flex-direction: column; }
+  .course-title > label { min-width: 0; width: 100%; }
+  .course-canvas-wrap, #courseMapCanvas { min-height: 430px; height: 55vh; }
+  .view-switch { width: 100%; }
+  .view-switch button { flex: 1; }
+  .canvas-wrap, #fusionCanvas { min-height: 430px; height: 55vh; }
+  .sensor-pills { grid-template-columns: repeat(2, 1fr); }
+  .map-legend { left: 12px; right: 12px; justify-content: flex-start; }
+}

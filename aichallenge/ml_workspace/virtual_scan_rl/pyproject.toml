@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aic-virtual-scan-rl"
+version = "0.1.0"
+description = "Virtual Scan SAC training environment for AI Challenge AWSIM"
+requires-python = ">=3.10"
+dependencies = [
+  "gymnasium>=1.0",
+  "numpy>=1.23",
+  "PyYAML>=6.0",
+  "stable-baselines3>=2.3",
+  "torch>=2.0",
+]
+
+[project.scripts]
+virtual-scan-rl = "virtual_scan_rl.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["virtual_scan_rl*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

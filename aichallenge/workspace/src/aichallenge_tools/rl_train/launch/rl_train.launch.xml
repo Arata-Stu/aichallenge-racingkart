@@ -1,10 +1,18 @@
 <launch>
+  <arg name="src_topic" default="/awsim/reset"/>
+  <arg name="dst_topic" default="/admin/awsim/reset"/>
+  <arg name="admin_state_topic" default="/admin/awsim/state"/>
+  <arg name="forwarded_state_topic" default="/awsim/admin_state"/>
 
-  <!-- rl_train_node -->
+  <!-- ROS_DOMAIN_ID is the source player domain; AWSIM_DOMAIN_ID defaults to 0. -->
   <node pkg="rl_train_controller"
         exec="rl_train_controller_node.py"
-        name="rl_train_node"
+        name="awsim_reset_domain_bridge"
         output="screen">
+    <param name="src_topic" value="$(var src_topic)"/>
+    <param name="dst_topic" value="$(var dst_topic)"/>
+    <param name="admin_state_topic" value="$(var admin_state_topic)"/>
+    <param name="forwarded_state_topic" value="$(var forwarded_state_topic)"/>
   </node>
 
 </launch>

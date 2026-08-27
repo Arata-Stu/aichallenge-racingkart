@@ -161,6 +161,8 @@ class MPC:
                 lb += safety_margin_diff
 
                 infeasible_index = ub < lb
+                if np.any(infeasible_index):
+                    self.model.reference_path.infeasible_path_detected = True
                 ub[infeasible_index] = 0.0
                 lb[infeasible_index] = 0.0
 
@@ -292,7 +294,7 @@ class MPC:
             self.infeasibility_counter = 0
             self.last_solved_wp_id = self.model.wp_id
 
-        except TypeError or ValueError:
+        except (TypeError, ValueError):
             id = nu * (self.infeasibility_counter + 1)
             if id + 2 < len(self.current_control):
                 u = np.array(self.current_control[id:id+2])

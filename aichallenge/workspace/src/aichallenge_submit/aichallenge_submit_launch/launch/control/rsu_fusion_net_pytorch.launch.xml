@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <arg name="simulation" default="true"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="checkpoint_path" default="$(env RSU_FUSION_NET_PYTORCH_CHECKPOINT '')"/>
+  <arg name="device" default="auto"/>
+  <arg name="control_mode" default="ai"/>
+  <arg name="csv_path" default="$(find-pkg-share laserscan_generator)/map/lane.csv"/>
+
+  <!-- Each Player domain owns its ego and RSU scan generators. -->
+  <group if="$(var simulation)">
+    <include file="$(find-pkg-share laserscan_generator)/launch/laserscan_generator.launch.xml">
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      <arg name="csv_path" value="$(var csv_path)"/>
+      <!-- Trajectory policy must see other vehicles in the same Virtual Scan geometry. -->
+      <arg name="enable_v2x_obstacles" value="true"/>
+    </include>
+    <include file="$(find-pkg-share rsu_laserscan_generator)/launch/rsu_laserscan_generator.launch.xml">
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    </include>
+  </group>
+
+  <include file="$(find-pkg-share rsu_fusion_net_pytorch)/launch/rsu_fusion_net_pytorch.launch.xml">
+    <arg name="checkpoint_path" value="$(var checkpoint_path)"/>
+    <arg name="device" value="$(var device)"/>
+    <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    <arg name="control_mode" value="$(var control_mode)"/>
+  </include>
+</launch>

@@ -7,6 +7,7 @@
   <arg name="run_rviz" default="false"/>
   <arg name="control_method" default="mpc"/>
   <arg name="use_obstacle_avoidance" default="false"/>
+  <arg name="enable_stuck_recovery" default="$(var simulation)"/>
 
   <log message="The arguments for aichallenge_submit_launch."/>
   <log message=" - simulation: $(var simulation)"/>
@@ -16,6 +17,7 @@
   <log message=" - run_rviz: $(var run_rviz)"/>
   <log message=" - control_method: $(var control_method)"/>
   <log message=" - use_obstacle_avoidance: $(var use_obstacle_avoidance)"/>
+  <log message=" - enable_stuck_recovery: $(var enable_stuck_recovery)"/>
 
   <include file="$(find-pkg-share aichallenge_submit_launch)/launch/reference.launch.xml" >
     <arg name="vehicle_model" value="racing_kart"/>
@@ -26,13 +28,31 @@
     <arg name="launch_vehicle_interface" value="$(var launch_vehicle_interface)"/>
     <arg name="control_method" value="$(var control_method)"/>
     <arg name="use_obstacle_avoidance" value="$(var use_obstacle_avoidance)"/>
+    <arg name="enable_stuck_recovery" value="$(var enable_stuck_recovery)"/>
   </include>
 
-  <!-- Run the shared RSU scan source once, together with the representative RViz player. -->
+  <!-- Joycon data collection keeps ego Scan, RSU Scan and BEV together. -->
   <group if="$(var simulation)">
-    <group if="$(var run_rviz)">
+    <group if="$(eval &quot;'$(var control_method)' == 'joycon'&quot;)">
+      <include file="$(find-pkg-share laserscan_generator)/launch/laserscan_generator.launch.xml">
+        <arg name="use_sim_time" value="$(var use_sim_time)"/>
+        <!-- The canonical scan includes V2X vehicles for data collection. -->
+        <arg name="enable_v2x_obstacles" value="true"/>
+      </include>
       <include file="$(find-pkg-share rsu_laserscan_generator)/launch/rsu_laserscan_generator.launch.xml">
         <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      </include>
+      <include file="$(find-pkg-share virtual_scan_bev_generator)/launch/virtual_scan_bev_generator.launch.xml">
+        <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      </include>
+    </group>
+
+    <!-- RL consumes only the obstacle-aware ego Virtual Scan. Avoid starting
+         unused RSU/BEV generators in the real-time training loop. -->
+    <group if="$(eval &quot;'$(var control_method)' == 'virtual_scan_rl'&quot;)">
+      <include file="$(find-pkg-share laserscan_generator)/launch/laserscan_generator.launch.xml">
+        <arg name="use_sim_time" value="$(var use_sim_time)"/>
+        <arg name="enable_v2x_obstacles" value="true"/>
       </include>
     </group>
   </group>

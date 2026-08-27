@@ -1,0 +1,23 @@
+/**:
+  ros__parameters:
+    # Empty/zero values below use metadata embedded by train.py in the .pth file.
+    model:
+      checkpoint_path: ""
+      architecture: ""
+      input_dim: 0
+      output_dim: 0
+    device: "auto"             # auto, cpu, cuda, or cuda:N
+    max_range: 0.0              # 0.0 uses checkpoint metadata
+    # TinyLiDARNet learns steering only. Longitudinal control is rule based:
+    # full acceleration until 15 km/h, then 0.7 with 1 km/h hysteresis.
+    control_mode: "rule_based" # rule_based, fixed, or ai (legacy two-output models)
+    fixed_acceleration: 0.7
+    startup_acceleration: 1.0
+    cruise_acceleration: 0.7
+    startup_speed_threshold_kmh: 15.0
+    speed_hysteresis_kmh: 1.0
+    velocity_timeout_sec: 0.5
+    acceleration_scale: 1.0
+    steering_scale: 1.0
+    debug: false
+    log_interval_sec: 5.0

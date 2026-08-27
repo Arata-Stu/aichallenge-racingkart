@@ -27,6 +27,21 @@
 - `aichallenge/utils/run_rviz.bash`: RViz の起動補助（`awsim`/`vehicle`/`remote` モード）。可視化は本質ではないので簡易スクリプトで十分
 - `aichallenge/utils/topic_check.sh`: 走行前のトピック存在/HZチェック。ログは `output/latest/` に残す運用を想定
 - `aichallenge/utils/record_rosbag.bash`: rosbag 手動記録用スクリプト
+- `aichallenge/utils/run_data_collection_dashboard.sh`: TinyLiDAR/RSUの収集メモUIを番号で選んで起動。ホストと`make autoware-bash`内の両方に対応
+
+## データ収集UI
+
+ホストでは次を実行し、番号でTinyLiDARまたはRSUのDashboardを選択します。
+
+```bash
+bash aichallenge/utils/run_data_collection_dashboard.sh
+```
+
+`make autoware-bash`で入ったコンテナ内では次を実行します。
+
+```bash
+bash utils/run_data_collection_dashboard.sh
+```
 
 ## 評価フロー（現状）
 

@@ -8,11 +8,20 @@ and reusable from non-ROS contexts (e.g. offline replay of rosbag CSVs).
 
 import math
 from collections import deque
-from typing import Deque, Dict, List, Tuple
+from typing import Deque, Dict, Iterable, List, Optional, Tuple
 
 
 def _stamp_to_seconds(stamp) -> float:
     return float(stamp.sec) + float(stamp.nanosec) * 1e-9
+
+
+def vehicle_id_from_domain_id(domain_id: str) -> Optional[str]:
+    """Return the AWSIM V2X vehicle ID associated with a ROS domain."""
+    try:
+        value = int(str(domain_id).strip())
+    except (TypeError, ValueError):
+        return None
+    return f"d{value}" if value > 0 else None
 
 
 class V2XVehicleTracker:
@@ -86,8 +95,15 @@ class V2XVehicleTracker:
     def active_vehicle_ids(self) -> List[str]:
         return list(self._active)
 
-    def predict_all(self, t_samples) -> Dict[str, List[Tuple[float, float]]]:
-        return {vid: self.predict_positions(vid, t_samples) for vid in self._active}
+    def predict_all(
+        self, t_samples, excluded_vehicle_ids: Iterable[str] = ()
+    ) -> Dict[str, List[Tuple[float, float]]]:
+        excluded = set(excluded_vehicle_ids)
+        return {
+            vid: self.predict_positions(vid, t_samples)
+            for vid in self._active
+            if vid not in excluded
+        }
 
 
 def predictions_to_obstacles(predictions, vehicle_radius: float, obstacle_cls=None):

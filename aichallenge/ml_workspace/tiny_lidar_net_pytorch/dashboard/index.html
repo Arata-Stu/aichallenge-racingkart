@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TinyLiDAR Studio</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="hero">
+    <div>
+      <p class="eyebrow">AI CHALLENGE · NPC POLICY WORKSPACE</p>
+      <h1>TinyLiDAR <span>Studio</span></h1>
+      <p class="subtitle">録画からステアモデルまで、ひとつの画面で確認・実行</p>
+    </div>
+    <div class="server-state"><i></i><span id="serverState">接続中</span></div>
+  </header>
+
+  <main>
+    <section class="metrics" aria-label="dataset summary">
+      <article><span>RECORDINGS</span><strong id="recordingCount">—</strong><small>Bag Manager</small></article>
+      <article><span>TRAIN SAMPLES</span><strong id="trainSamples">—</strong><small id="trainSequences">— sequences</small></article>
+      <article><span>VAL SAMPLES</span><strong id="valSamples">—</strong><small id="valSequences">— sequences</small></article>
+      <article><span>CHECKPOINTS</span><strong id="checkpointCount">—</strong><small>PyTorch .pth</small></article>
+    </section>
+
+    <section class="version-bar" aria-label="dataset version">
+      <div><span>ACTIVE DATASET VERSION</span><strong id="activeVersionLabel">default</strong></div>
+      <select id="datasetVersion" aria-label="Active dataset version"></select>
+      <small id="versionSummary">既存データを読み込み中…</small>
+    </section>
+
+    <nav class="tabs" aria-label="workspace sections">
+      <button class="active" data-tab="collection">収集メモ</button>
+      <button data-tab="explorer">データを見る</button>
+      <button data-tab="preprocess">前処理</button>
+      <button data-tab="training">学習</button>
+      <button data-tab="jobs">ジョブとログ <b id="runningBadge" hidden>1</b></button>
+    </nav>
+
+    <section class="tab-panel active" id="collection">
+      <div class="panel-heading">
+        <div><p class="section-number">01</p><h2>Collection Notes</h2></div>
+        <p>R1で録画開始・L1で停止。停止後の録画をここで分類します。</p>
+      </div>
+      <div class="collection-layout">
+        <article class="card collection-recordings">
+          <div class="card-title"><h3>録画</h3><span id="collectionWatchState">停止済みBagを監視中</span></div>
+          <label class="collection-select">対象録画<select id="collectionRecording"></select></label>
+          <div id="collectionRecent" class="collection-recent"></div>
+        </article>
+        <form id="collectionForm" class="card collection-form">
+          <div class="card-title"><h3 id="collectionTitle">録画を選択してください</h3><span id="collectionSavedState">未分類</span></div>
+          <div class="collection-fields">
+            <div class="two-column">
+              <label>カテゴリ<select id="collectionCategory"><option value="free_optimal">通常・最適</option><option value="free_diverse">通常・多様</option><option value="follow">追従</option><option value="pass_left">左追い越し</option><option value="pass_right">右追い越し</option><option value="abort">追い越し断念</option><option value="recovery">復帰操作</option><option value="other">その他</option></select></label>
+              <label>結果<select id="collectionOutcome"><option value="success">成功</option><option value="failure">失敗</option><option value="review">要確認</option></select></label>
+              <label>学習への採用<select id="collectionQuality"><option value="accepted">採用</option><option value="review">要確認</option><option value="rejected">除外</option></select></label>
+              <label>Dataset Version<input id="collectionVersions" type="text" maxlength="500" placeholder="例: interaction-v1, rsu-ablation-v1"></label>
+            </div>
+            <label>その場メモ<textarea id="collectionNotes" maxlength="4000" rows="6" placeholder="接近位置、追い越せなかった理由、操作ミスなど"></textarea></label>
+            <div class="collection-actions"><small>同じBagを複数Versionへ登録できます。カンマ区切りで入力してください。</small><button class="primary" type="submit">分類とメモを保存</button></div>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="explorer">
+      <div class="panel-heading">
+        <div><p class="section-number">02</p><h2>Dataset Explorer</h2></div>
+        <select id="sequenceSelect" aria-label="sequence"></select>
+      </div>
+      <div id="emptyExplorer" class="empty" hidden>前処理済みデータがありません。「前処理」から録画を追加してください。</div>
+      <div class="visual-grid" id="visualGrid">
+        <article class="card scan-card">
+          <div class="card-title"><h3>Virtual Scan</h3><span id="frameLabel">frame —</span></div>
+          <canvas id="scanCanvas" width="900" height="560"></canvas>
+          <div class="timeline">
+            <button id="playButton" class="icon-button" title="再生">▶</button>
+            <input id="frameSlider" type="range" min="0" max="0" value="0">
+            <input id="frameNumber" type="number" min="0" value="0">
+          </div>
+          <div class="frame-values">
+            <span>STEER <b id="frameSteer">—</b> rad</span>
+            <span>ACCEL <b id="frameAccel">—</b></span>
+            <span>POINTS <b id="framePoints">—</b></span>
+          </div>
+        </article>
+        <div class="side-stack">
+          <article class="card">
+            <div class="card-title"><h3>Steering Distribution</h3><span>rad</span></div>
+            <canvas id="histogramCanvas" width="600" height="260"></canvas>
+            <div class="distribution" id="distribution"></div>
+          </article>
+          <article class="card detail-card">
+            <div class="card-title"><h3>Sequence Health</h3><span id="sequenceSplit">—</span></div>
+            <dl id="sequenceDetails"></dl>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="preprocess">
+      <div class="panel-heading">
+        <div><p class="section-number">03</p><h2>Preprocess Recordings</h2></div>
+        <p>同じ録画をTrainとValの両方に選択できます。</p>
+      </div>
+      <div class="version-target card">
+        <label>前処理先Version<select id="preprocessVersion"></select></label>
+        <span>または</span>
+        <label>新しいVersion名<input id="newVersion" type="text" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,63}" placeholder="例: pretrain-v2"></label>
+        <small>新しい名前を入力した場合は自動作成され、既存Versionの選択より優先されます。</small>
+      </div>
+      <article class="card">
+        <div class="recording-head"><span>録画</span><span>サイズ</span><span>TRAIN</span><span>VAL</span></div>
+        <div id="recordingList" class="recording-list"></div>
+      </article>
+      <form id="preprocessForm" class="action-bar">
+        <label>既存データ
+          <select id="existingPolicy"><option value="skip">スキップ</option><option value="overwrite">上書き</option></select>
+        </label>
+        <label>同期許容秒<input id="syncDelta" type="number" min="0" max="10" step="0.01" value="0.10"></label>
+        <label>最大距離 m<input id="maxRange" type="number" min="0.1" max="1000" step="0.1" value="30"></label>
+        <button class="primary" type="submit">選択した録画を前処理</button>
+      </form>
+    </section>
+
+    <section class="tab-panel" id="training">
+      <div class="panel-heading">
+        <div><p class="section-number">04</p><h2>Train Steering Policy</h2></div>
+        <div class="training-heading-actions"><span id="trainingVersionLabel" class="version-chip">default</span><div class="preset-switch"><button type="button" class="active" data-preset="pretrain">事前学習</button><button type="button" data-preset="finetune">Fine-tuning</button></div></div>
+      </div>
+      <form id="trainingForm" class="training-grid">
+        <article class="card form-card">
+          <h3>モデル</h3>
+          <label>Architecture<select id="architecture"><option value="normal">Normal · 推奨</option><option value="small">Small · 軽量</option></select></label>
+          <label class="check-line"><input id="steeringOnly" type="checkbox" checked><span><b>ステア専用学習</b><small>加速度損失を0にし、推論時はルールベース制御</small></span></label>
+          <label>事前学習チェックポイント<select id="pretrained"><option value="">使用しない</option></select></label>
+          <label>Device<select id="device"><option value="cuda">CUDA</option><option value="auto">Auto</option><option value="cpu">CPU</option></select></label>
+        </article>
+        <article class="card form-card">
+          <h3>ハイパーパラメータ</h3>
+          <div class="two-column">
+            <label>Epochs<input id="epochs" type="number" min="1" value="100"></label>
+            <label>Batch size<input id="batchSize" type="number" min="1" value="64"></label>
+            <label>Learning rate<input id="learningRate" type="number" min="0.00000001" step="0.00001" value="0.001"></label>
+            <label>Early stop<input id="patience" type="number" min="0" value="15"></label>
+            <label>Workers<input id="workers" type="number" min="0" max="64" value="4"></label>
+          </div>
+        </article>
+        <article class="card readiness-card">
+          <h3>準備状況</h3>
+          <div id="readiness"></div>
+          <button class="primary wide" type="submit">学習を開始</button>
+          <p>結果は日時別ディレクトリに保存され、成功すると<code>latest</code>が更新されます。</p>
+        </article>
+      </form>
+    </section>
+
+    <section class="tab-panel" id="jobs">
+      <div class="panel-heading">
+        <div><p class="section-number">05</p><h2>Jobs & Logs</h2></div>
+        <button id="refreshButton" class="secondary">更新</button>
+      </div>
+      <div class="jobs-grid">
+        <div id="jobList" class="job-list"></div>
+        <article class="card log-card">
+          <div class="card-title"><h3 id="logTitle">ジョブを選択してください</h3><button id="cancelJob" class="danger" hidden>停止</button></div>
+          <pre id="jobLog">前処理または学習を開始すると、ここにログが表示されます。</pre>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -21,7 +21,7 @@ from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy, QoS
 
 from std_msgs.msg import Empty, Bool, Float32MultiArray, Int32
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Quaternion, Pose2D, Point, Vector3
+from geometry_msgs.msg import Quaternion, Pose2D, Point, PoseWithCovarianceStamped, Vector3
 from std_msgs.msg import ColorRGBA
 
 from rcl_interfaces.msg import SetParametersResult
@@ -34,6 +34,7 @@ from v2x_msgs.msg import V2XVehiclePositionArray
 from multi_purpose_mpc_ros.v2x_vehicle_tracker import (
     V2XVehicleTracker,
     predictions_to_obstacles,
+    vehicle_id_from_domain_id,
 )
 
 # Multi_Purpose_MPC
@@ -134,17 +135,24 @@ class MPCController(Node):
         self.declare_parameter("use_boost_acceleration", False)
         self.declare_parameter("use_obstacle_avoidance", False)
         self.declare_parameter("use_stats", False)
+        self.declare_parameter("ego_vehicle_id", "")
 
         # get parameters
         self.use_sim_time = self.get_parameter("use_sim_time").get_parameter_value().bool_value
         self.USE_BUG_ACC = self.get_parameter("use_boost_acceleration").get_parameter_value().bool_value
         self.USE_OBSTACLE_AVOIDANCE = self.get_parameter("use_obstacle_avoidance").get_parameter_value().bool_value
         self.use_stats = self.get_parameter("use_stats").get_parameter_value().bool_value
+        configured_ego_id = str(self.get_parameter("ego_vehicle_id").value).strip()
+        self._ego_vehicle_id = configured_ego_id or vehicle_id_from_domain_id(
+            os.environ.get("ROS_DOMAIN_ID", "")
+        )
 
         self._config_path = config_path
         self._ref_vel_config_path: Optional[str] = ref_vel_config_path
         self._cfg = self._load_config()
         self._odom: Optional[Odometry] = None
+        self._gnss_pose: Optional[PoseWithCovarianceStamped] = None
+        self._gnss_pose_received_at: Optional[float] = None
         self._enable_control = True
         self._initialize()
         self._setup_parameters_callback()
@@ -456,6 +464,8 @@ class MPCController(Node):
                 warn_callback=self.get_logger().warn,
             )
             self._v2x_vehicle_radius = float(v2x_cfg.vehicle_radius)
+            self._v2x_current_positions = {}
+            self._v2x_topology_logged = False
             mpc_N = int(self._cfg.mpc.N)  # type: ignore
             t_horizon = mpc_N / float(self._cfg.mpc.control_rate)  # type: ignore
             self._v2x_t_samples = [
@@ -504,6 +514,8 @@ class MPCController(Node):
           self._command_raw_pub = self.create_publisher(
             AckermannControlCommand, "/control/command/control_cmd_raw", 1)
           print("use normal ackermann control command")
+        self._infeasible_pub = self.create_publisher(
+            Bool, "/control/mpc/infeasible", 1)
 
         # NOTE:評価環境での可視化のためにダミーのトピック名を使用
         self._mpc_pred_pub = self.create_publisher(
@@ -521,6 +533,12 @@ class MPCController(Node):
         # Subscribers
         self._odom_sub = self.create_subscription(
             Odometry, "/localization/kinematic_state", self._odom_callback, 1)
+        self._gnss_pose_sub = self.create_subscription(
+            PoseWithCovarianceStamped,
+            "/localization/imu_gnss_poser/pose_with_covariance",
+            self._gnss_pose_callback,
+            1,
+        )
         self._control_mode_request_sub = self.create_subscription(
             Bool, "control/control_mode_request_topic", self._control_mode_request_callback, 1)
         # simple_trajectory_generator publishes with BEST_EFFORT/KEEP_LAST(1) — match it
@@ -586,6 +604,10 @@ class MPCController(Node):
     def _odom_callback(self, msg: Odometry) -> None:
         self._odom = msg
 
+    def _gnss_pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
+        self._gnss_pose = msg
+        self._gnss_pose_received_at = self.get_clock().now().nanoseconds / 1e9
+
     def _control_mode_request_callback(self, msg):
         if msg.data and not self._enable_control:
             self.get_logger().info("Control mode request received")
@@ -597,10 +619,63 @@ class MPCController(Node):
 
     def _v2x_callback(self, msg: V2XVehiclePositionArray) -> None:
         self._v2x_tracker.update(msg)
-        predictions = self._v2x_tracker.predict_all(self._v2x_t_samples)
+        excluded_ids = {self._ego_vehicle_id} if self._ego_vehicle_id else set()
+        predictions = self._v2x_tracker.predict_all(
+            self._v2x_t_samples, excluded_vehicle_ids=excluded_ids
+        )
+        self._v2x_current_positions = {
+            vehicle_id: points[0]
+            for vehicle_id, points in predictions.items()
+            if points
+        }
         self._dynamic_obstacles = predictions_to_obstacles(
             predictions, self._v2x_vehicle_radius)
         self._obstacles_updated = True
+        if not self._v2x_topology_logged:
+            received = ",".join(self._v2x_tracker.active_vehicle_ids()) or "none"
+            used = ",".join(predictions) or "none"
+            self.get_logger().info(
+                f"V2X obstacle IDs: ego={self._ego_vehicle_id or 'unknown'} "
+                f"received=[{received}] used=[{used}]"
+            )
+            self._v2x_topology_logged = True
+
+    def _infeasible_diagnostic(self, now, pose, path_infeasible, solver_infeasible):
+        reasons = []
+        if path_infeasible:
+            reasons.append("path")
+        if solver_infeasible:
+            reasons.append("solver")
+
+        nearest = "none"
+        if self.USE_OBSTACLE_AVOIDANCE and self._v2x_current_positions:
+            vehicle_id, point = min(
+                self._v2x_current_positions.items(),
+                key=lambda item: np.hypot(
+                    item[1][0] - pose.x, item[1][1] - pose.y
+                ),
+            )
+            distance = float(np.hypot(point[0] - pose.x, point[1] - pose.y))
+            nearest = f"{vehicle_id}:{distance:.2f}m"
+
+        gnss_delta = "stale"
+        if (
+            self._gnss_pose is not None
+            and self._gnss_pose_received_at is not None
+            and 0.0 <= now.nanoseconds / 1e9 - self._gnss_pose_received_at <= 1.0
+        ):
+            gnss_position = self._gnss_pose.pose.pose.position
+            gnss_delta = (
+                f"{np.hypot(gnss_position.x - pose.x, gnss_position.y - pose.y):.2f}m"
+            )
+
+        lateral_error = float(self._car.spatial_state.e_y)
+        return (
+            f"MPC infeasible reason={'+'.join(reasons)} wp={self._car.wp_id} "
+            f"pose=({pose.x:.2f},{pose.y:.2f}) e_y={lateral_error:.2f}m "
+            f"ego={self._ego_vehicle_id or 'unknown'} nearest_v2x={nearest} "
+            f"ekf_gnss_delta={gnss_delta}; notifying recovery controller"
+        )
 
     def _filter_obstacles_to_corridor(self, obstacles: List[Obstacle]) -> List[Obstacle]:
         if not obstacles or self._waypoint_xy.size == 0:
@@ -804,8 +879,23 @@ class MPCController(Node):
         # print(f"mpc x: {self._mpc.model.temporal_state.x}, y: {self._mpc.model.temporal_state.y}, psi: {self._mpc.model.temporal_state.psi}")
 
         with self._stats.time_block("control"):
+            self._reference_path.reset_infeasible_path_status()
             u, max_delta = self._mpc.get_control()
             # self.get_logger().info(f"u: {u}")
+
+        path_infeasible = self._reference_path.infeasible_path_detected
+        solver_infeasible = self._mpc.infeasibility_counter > 0
+        infeasible = path_infeasible or solver_infeasible
+        infeasible_msg = Bool()
+        infeasible_msg.data = infeasible
+        self._infeasible_pub.publish(infeasible_msg)
+        if infeasible:
+            self.get_logger().warn(
+                self._infeasible_diagnostic(
+                    now, pose, path_infeasible, solver_infeasible
+                ),
+                throttle_duration_sec=1.0,
+            )
 
         if self._ref_vel_configulator is not None:
             ref_vel_mps = self._ref_vel_configulator.get_ref_vel(self._mpc.model.wp_id)

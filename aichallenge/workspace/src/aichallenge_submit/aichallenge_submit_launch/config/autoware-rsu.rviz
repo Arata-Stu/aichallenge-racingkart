@@ -10,6 +10,7 @@ Panels:
         - /Map1/RaceTrajectory1/Topic1
         - /Sensing1
         - /Sensing1/Lidar1/Topic1
+        - /Sensing1/VirtualScanBEV1/Topic1
         - /Localization1
         - /Planning1
         - /Control1
@@ -258,19 +259,19 @@ Visualization Manager:
           Channel Name: intensity
           Class: rviz_default_plugins/LaserScan
           Color: 255; 255; 255
-          Color Transformer: ""
+          Color Transformer: FlatColor
           Decay Time: 0
-          Enabled: false
+          Enabled: true
           Invert Rainbow: false
           Max Color: 255; 255; 255
           Max Intensity: 4096
           Min Color: 0; 0; 0
           Min Intensity: 0
           Name: Lidar
-          Position Transformer: ""
+          Position Transformer: XYZ
           Selectable: true
           Size (Pixels): 3
-          Size (m): 0.20000000298023224
+          Size (m): 0.10000000149011612
           Style: Points
           Topic:
             Depth: 1
@@ -280,8 +281,28 @@ Visualization Manager:
             Reliability Policy: Best Effort
             Value: /sensing/lidar/scan
           Use Fixed Frame: true
-          Use rainbow: true
-          Value: false
+          Use rainbow: false
+          Value: true
+        - Alpha: 0.550000011920929
+          Class: rviz_default_plugins/Map
+          Color Scheme: costmap
+          Draw Behind: true
+          Enabled: true
+          Name: VirtualScanBEV
+          Topic:
+            Depth: 1
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Best Effort
+            Value: /perception/virtual_scan_bev/occupancy_grid
+          Update Topic:
+            Depth: 1
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Best Effort
+            Value: ""
+          Use Timestamp: true
+          Value: true
         - Class: rviz_default_plugins/Camera
           Enabled: false
           Far Plane Distance: 100
@@ -317,6 +338,7 @@ Visualization Manager:
               GNSS: true
               Lidar: true
               Value: true
+              VirtualScanBEV: true
             System:
               PolarGridDisplay: true
               TF: true
@@ -478,6 +500,18 @@ Visualization Manager:
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /mpc/prediction
+          Value: true
+        - Class: rviz_default_plugins/MarkerArray
+          Enabled: true
+          Name: RSU Fusion Trajectory Candidates
+          Namespaces:
+            rsu_trajectory_candidates: true
+          Topic:
+            Depth: 1
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /rsu_fusion_net_pytorch_node/candidate_trajectories
           Value: true
       Enabled: true
       Name: Control

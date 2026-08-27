@@ -18,7 +18,7 @@ fi
 shopt -s nullglob
 session_files=("${pid_dir}"/*.sid)
 if (( ${#session_files[@]} == 0 )); then
-    echo "[INFO] No registered AWSIM/Autoware sessions."
+    echo "[INFO] No registered Terminator sessions."
     exit 0
 fi
 
@@ -38,7 +38,7 @@ for session_file in "${session_files[@]}"; do
 done
 
 if (( ${#active_sessions[@]} == 0 )); then
-    echo "[INFO] No active AWSIM/Autoware sessions."
+    echo "[INFO] No active Terminator sessions."
     exit 0
 fi
 
@@ -77,7 +77,8 @@ wait_for_sessions()
 
 echo "[INFO] Stopping all registered sessions with SIGINT..."
 signal_sessions INT
-if ! wait_for_sessions 40; then
+# Bag Manager allows rosbag2 up to 10 seconds to finalize MCAP metadata.
+if ! wait_for_sessions 75; then
     echo "[WARN] Some sessions ignored SIGINT; sending SIGTERM..." >&2
     signal_sessions TERM
     if ! wait_for_sessions 20; then
@@ -91,4 +92,4 @@ for session_file in "${session_files[@]}"; do
     rm -f "${session_file}"
 done
 
-echo "[INFO] All registered AWSIM/Autoware sessions stopped."
+echo "[INFO] All registered Terminator sessions stopped."

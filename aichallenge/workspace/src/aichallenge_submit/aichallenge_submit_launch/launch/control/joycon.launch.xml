@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
   <arg name="input_source" default="joy" description="teleop input: joy | keyboard | keyboard_x11"/>
+  <arg name="enable_awsim_reset_bridge" default="true"/>
   <include file="$(find-pkg-share teleop_manager)/launch/teleop_manager.launch.xml">
     <arg name="input_source" value="$(var input_source)"/>
   </include>
+
+  <!-- Reuse the player's /joy stream. No second joy_node opens the device. -->
+  <group if="$(var enable_awsim_reset_bridge)">
+    <include file="$(find-pkg-share rl_train_controller)/launch/rl_train.launch.xml"/>
+  </group>
 </launch>

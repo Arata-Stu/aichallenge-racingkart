@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>stuck_recovery_controller</name>
+  <version>0.1.0</version>
+  <description>Supervises MPC commands and performs an automatic reverse maneuver when the kart is stuck.</description>
+  <maintainer email="isamu.takagi@tier4.jp">Takagi Isamu</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>nav_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>autoware_auto_control_msgs</depend>
+  <depend>autoware_auto_vehicle_msgs</depend>
+
+  <test_depend>ament_cmake_pytest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

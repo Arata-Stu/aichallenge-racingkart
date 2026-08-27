@@ -94,7 +94,7 @@ aichallenge_submit.launch.xml
 | `pilot_net` | `pilot_net_controller`（Python） | `/image_raw`（`sensor_msgs/Image`） |
 | `joycon` | `teleop_manager`（`teleop_manager` パッケージ） | （手動制御） |
 
-各値は `control/<name>.launch.xml` を `<include>` する `<group if=...>` で実装されており、いずれも `/control/command/control_cmd`（`autoware_auto_control_msgs/AckermannControlCommand`）を publish します。
+各値は `control/<name>.launch.xml` を `<include>` する `<group if=...>` で実装されています。MPCの自動復帰が有効な場合だけ、MPCは内部トピック `/control/command/control_cmd_mpc` をpublishし、`stuck_recovery_controller` が最終 `/control/command/control_cmd` をpublishします。それ以外の制御方式は最終トピックへ直接publishします。
 
 上記 5 値以外を渡すと、どの `<group if=...>` にも一致せず制御ノードが起動せず車両が動きません。既定値 `mpc` を変更すると、`control_method` を明示しない既存の起動経路の挙動が変わります。
 
@@ -136,7 +136,7 @@ AWSIM が publish し参加者ノードが subscribe するトピックです（
 
 | トピック | 型 | 確認元 |
 |---|---|---|
-| `/control/command/control_cmd` | `autoware_auto_control_msgs/AckermannControlCommand` | `pure_pursuit.launch.xml`（remap）、`mpc_controller.py`、`boost_commander.cpp`、`tiny_lidar_net_controller_node.py`、`pilot_net_controller_node.py` |
+| `/control/command/control_cmd` | `autoware_auto_control_msgs/AckermannControlCommand` | `stuck_recovery_controller`（MPC復帰有効時）、`pure_pursuit.launch.xml`（remap）、`mpc_controller.py`（復帰無効時）、`boost_commander.cpp`、`tiny_lidar_net_controller_node.py`、`pilot_net_controller_node.py` |
 
 AWSIM はこのトピックを受けてカートを動かします。全制御方式（mpc / pure_pursuit / tiny_lidar_net / pilot_net）がこのトピックに収束します。
 
