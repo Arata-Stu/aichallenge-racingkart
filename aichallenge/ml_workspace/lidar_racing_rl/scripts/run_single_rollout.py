@@ -495,6 +495,10 @@ def _run_rollout(
                     result.truncated,
                     ego_speed,
                     ego_action,
+                    result.diagnostics.collision,
+                    result.diagnostics.off_track,
+                    result.diagnostics.race_complete,
+                    result.diagnostics.unrecoverable,
                 )
                 next_carry = (
                     result.state,
@@ -536,6 +540,10 @@ def _run_rollout(
                 result.truncated,
                 ego_speed,
                 ego_action,
+                result.diagnostics.collision,
+                result.diagnostics.off_track,
+                result.diagnostics.race_complete,
+                result.diagnostics.unrecoverable,
             )
             return (result.state, result.observation, current_key), metrics
 
@@ -556,9 +564,17 @@ def _run_rollout(
         _, final_observation, _, _, _ = final_carry
     else:
         _, final_observation, _ = final_carry
-    rewards, terminated, truncated, ego_speeds, ego_actions = jax.device_get(
-        metric_history
-    )
+    (
+        rewards,
+        terminated,
+        truncated,
+        ego_speeds,
+        ego_actions,
+        collisions,
+        off_tracks,
+        race_completes,
+        unrecoverables,
+    ) = jax.device_get(metric_history)
     observation_array = np.asarray(jax.device_get(final_observation))
     rewards_array = np.asarray(rewards)
     ego_speeds_array = np.asarray(ego_speeds)
@@ -581,6 +597,20 @@ def _run_rollout(
         else None
     )
     ego_moved = maximum_ego_speed is not None and maximum_ego_speed > 1.0e-3
+    collision_count = int(np.count_nonzero(np.asarray(collisions)))
+    off_track_count = int(np.count_nonzero(np.asarray(off_tracks)))
+    race_complete_count = int(np.count_nonzero(np.asarray(race_completes)))
+    unrecoverable_count = int(np.count_nonzero(np.asarray(unrecoverables)))
+    unexpected_termination_count = int(
+        np.count_nonzero(
+            np.asarray(collisions)
+            | np.asarray(off_tracks)
+            | np.asarray(unrecoverables)
+        )
+    )
+    teacher_stable = (
+        action_source != "pure-pursuit" or unexpected_termination_count == 0
+    )
     return {
         "schema_version": 1,
         "rollout": "single_environment",
@@ -623,9 +653,20 @@ def _run_rollout(
             and ego_speeds_finite
             and ego_actions_finite
             and (action_source == "fixed" or ego_moved)
+            and teacher_stable
         ),
         "terminated_count": int(np.count_nonzero(np.asarray(terminated))),
         "truncated_count": int(np.count_nonzero(np.asarray(truncated))),
+        "termination_causes": {
+            "collision": collision_count,
+            "off_track": off_track_count,
+            "race_complete": race_complete_count,
+            "unrecoverable": unrecoverable_count,
+            "unexpected": unexpected_termination_count,
+        },
+        "teacher_stable": (
+            teacher_stable if action_source == "pure-pursuit" else None
+        ),
         "pure_pursuit": (
             {"lookahead": lookahead, "speed_multiplier": speed_multiplier}
             if action_source == "pure-pursuit"
