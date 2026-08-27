@@ -67,6 +67,11 @@ def _parse_data_files() -> dict[str, int]:
     root_cuda = root_project["project"]["optional-dependencies"]["cuda"]
     if expected_cuda not in root_cuda:
         raise RuntimeError(f"root CUDA extra must require {expected_cuda}")
+    expected_cuda_plugin = (
+        "jax-cuda12-plugin[with-cuda]>=0.7.2,<0.8; sys_platform == 'linux'"
+    )
+    if expected_cuda_plugin not in root_cuda:
+        raise RuntimeError(f"root CUDA extra must require {expected_cuda_plugin}")
     root_overrides = root_project["tool"]["uv"]["override-dependencies"]
     submodule_overrides = submodule_project["tool"]["uv"]["override-dependencies"]
     if expected_jax not in root_overrides or expected_jax not in submodule_overrides:

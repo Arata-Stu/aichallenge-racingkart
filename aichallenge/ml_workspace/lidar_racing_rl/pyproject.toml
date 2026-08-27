@@ -25,7 +25,10 @@ dependencies = [
 
 [project.optional-dependencies]
 # CUDA support is opt-in because the correct wheel depends on the execution host.
-cuda = ["jax[cuda12]>=0.7.2,<0.8"]
+cuda = [
+  "jax[cuda12]>=0.7.2,<0.8",
+  "jax-cuda12-plugin[with-cuda]>=0.7.2,<0.8; sys_platform == 'linux'",
+]
 # The path source is intentionally optional. Initialize the submodule before syncing.
 f1tenth = ["f1tenth-gym-jax", "jax-pf"]
 # Match the AI Challenge runtime's state_dict writer/reader version. PyTorch is

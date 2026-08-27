@@ -92,7 +92,9 @@ git -C aichallenge/ml_workspace/lidar_racing_rl/repos/f1tenth_gym_jax rev-parse 
 F1TENTH Gym JAXはJAX `>=0.7.2,<0.8`を使用します。固定した`jax-pf`のpackage
 metadataには古い`jax<0.7`上限が残っていますが、fork自身のlockfileは監査済みSHAを
 JAX 0.7.2で解決しています。path dependency側のuv overrideは親へ継承されないため、
-親`pyproject.toml`にも同じJAX 0.7互換overrideを明示しています。
+親`pyproject.toml`にも同じJAX 0.7互換overrideを明示しています。overrideで
+`jax[cuda12]`のextra情報が失われてもCPU版へ縮退しないよう、Linux CUDA環境では
+`jax-cuda12-plugin[with-cuda]`も明示的に同期します。
 
 ```bash
 # CPU。imageをbuildし、uv.lockを生成してCPU named volumeへ同期する
