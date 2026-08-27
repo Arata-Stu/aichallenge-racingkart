@@ -202,6 +202,8 @@ checkpointにはReplay Bufferと環境状態を含めません。再開時はAct
 
 Step 1の既定は、UTD比1での長時間更新を安定させるためActor/Critic/temperatureの学習率を`1e-4`、Replay容量を25万件、教師warmupを5万transitionとします。25万件のReplayは実測比で約2.88 GB（2.69 GiB）を見込み、8 GiB GPUにモデル・XLA用の余裕を残します。コースアウトと衝突の終了罰は、それまでに得る進捗報酬を上回る尺度にして、速くコースアウトする方策が正のreturnを得る近道を防ぎます。
 
+GPU overlayはJAXのVRAM一括事前予約を無効化し、既定でCUDA async allocatorを使います。大きなReplay配列とXLA実行領域の間で連続領域を確保できない断片化を抑えるためです。25万件でなおOOMになる8 GiB GPUでは、allocator設定だけで無理に詰めずReplay容量を20万、次に15万へ下げます。
+
 smokeでNaNなし、Replay sample、Actor/Critic更新、checkpoint保存・warm restart、決定論評価、Flax/PyTorch parityを確認してから、`--max-transitions`を外してStep 1本学習へ進みます。Step 2のsourceには相対進行、passヒステリシス、安全接触、追従停滞の報酬と評価指標まで接続済みですが、実行はStep 1成立、4台rollout、NPC安全性をUbuntu上で確認してから行ってください。
 
 export済みbundleはchecksumを検証してROS 2パッケージへ配置します。既存modelの置換は明示的に`LIDAR_RL_INSTALL_ARGS=--force`を指定します。
