@@ -210,7 +210,7 @@ lidar-rl-setup:
 	$(LIDAR_RL_RUN) uv sync $(LIDAR_RL_SYNC_ARGS)
 
 lidar-rl-test:
-	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_TEST_RUN_ARGS) pytest $(LIDAR_RL_ARGS)
+	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_TEST_RUN_ARGS) python -m pytest $(LIDAR_RL_ARGS)
 
 lidar-rl-benchmark:
 	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_RUN_ARGS) python scripts/benchmark_env.py $(LIDAR_RL_ARGS)

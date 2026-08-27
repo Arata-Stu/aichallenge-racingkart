@@ -99,6 +99,15 @@ def _parse_data_files() -> dict[str, int]:
     if pytorch_cpu.get("explicit") is not True:
         raise RuntimeError("PyTorch CPU index must remain explicit")
 
+    makefile = (REPOSITORY_ROOT / "Makefile").read_text(encoding="utf-8")
+    pytest_entrypoint = (
+        "uv run --frozen $(LIDAR_RL_TEST_RUN_ARGS) python -m pytest"
+    )
+    if pytest_entrypoint not in makefile:
+        raise RuntimeError(
+            "lidar-rl-test must use python -m pytest so project scripts are importable"
+        )
+
     json_files = sorted(
         path
         for path in PROJECT_ROOT.rglob("*.json")
