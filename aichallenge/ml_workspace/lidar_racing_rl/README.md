@@ -134,10 +134,11 @@ docker compose run --rm --no-deps lidar-rl \
   --config-name step1_single_vehicle \
   --action-source pure-pursuit \
   --steps 1000 \
-  --output outputs/single_rollout.json
+  --output outputs/single_rollout.json \
+  --trace-svg outputs/single_rollout.svg
 ```
 
-JAXを初期化せず設定だけを検証するには末尾へ`--dry-run`を追加します。固定actionのAPI smokeが必要な場合だけ`--action-source fixed`と`--ego-*` / `--npc-*`を指定します。
+SVGにはcenterlineの順序、左右境界、episodeごとに分割した走行軌跡、collisionとoff-track地点を描画します。JAXを初期化せず設定だけを検証するには末尾へ`--dry-run`を追加します。固定actionのAPI smokeが必要な場合だけ`--action-source fixed`と`--ego-*` / `--npc-*`を指定します。
 
 ## 64環境benchmark
 

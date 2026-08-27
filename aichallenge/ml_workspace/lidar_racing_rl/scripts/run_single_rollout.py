@@ -274,6 +274,130 @@ def _write_json(result: dict[str, Any], output: Path | None) -> None:
         output.write_text(f"{serialized}\n", encoding="utf-8")
 
 
+def _write_trace_svg(
+    output: Path,
+    track: Any,
+    poses: Any,
+    terminated: Any,
+    truncated: Any,
+    collisions: Any,
+    off_tracks: Any,
+) -> None:
+    """Render the ordered centerline, boundaries, and rollout trace to SVG."""
+
+    import numpy as np
+
+    centerline = track.centerline
+    center_x = np.asarray(centerline.xs, dtype=float)
+    center_y = np.asarray(centerline.ys, dtype=float)
+    center_yaw = np.asarray(centerline.yaws, dtype=float)
+    left_widths = np.asarray(track.left_widths, dtype=float)
+    right_widths = np.asarray(track.right_widths, dtype=float)
+    pose_array = np.asarray(poses, dtype=float)
+    if (
+        center_x.ndim != 1
+        or center_y.shape != center_x.shape
+        or center_yaw.shape != center_x.shape
+        or left_widths.shape != center_x.shape
+        or right_widths.shape != center_x.shape
+        or pose_array.ndim != 2
+        or pose_array.shape[1] < 2
+    ):
+        raise RuntimeError("track and rollout arrays do not satisfy the SVG trace contract")
+
+    normal_x = -np.sin(center_yaw)
+    normal_y = np.cos(center_yaw)
+    left_x = center_x + left_widths * normal_x
+    left_y = center_y + left_widths * normal_y
+    right_x = center_x - right_widths * normal_x
+    right_y = center_y - right_widths * normal_y
+    all_x = np.concatenate((left_x, right_x, pose_array[:, 0]))
+    all_y = np.concatenate((left_y, right_y, pose_array[:, 1]))
+    if not np.all(np.isfinite(all_x)) or not np.all(np.isfinite(all_y)):
+        raise RuntimeError("cannot render non-finite track or rollout coordinates")
+
+    canvas_width = 1200.0
+    canvas_height = 900.0
+    margin = 50.0
+    span_x = max(float(np.max(all_x) - np.min(all_x)), 1.0e-6)
+    span_y = max(float(np.max(all_y) - np.min(all_y)), 1.0e-6)
+    scale = min(
+        (canvas_width - 2.0 * margin) / span_x,
+        (canvas_height - 2.0 * margin) / span_y,
+    )
+    offset_x = margin + 0.5 * (canvas_width - 2.0 * margin - span_x * scale)
+    offset_y = margin + 0.5 * (canvas_height - 2.0 * margin - span_y * scale)
+    min_x = float(np.min(all_x))
+    max_y = float(np.max(all_y))
+
+    def point(x_value: float, y_value: float) -> str:
+        x_pixel = offset_x + (float(x_value) - min_x) * scale
+        y_pixel = offset_y + (max_y - float(y_value)) * scale
+        return f"{x_pixel:.2f},{y_pixel:.2f}"
+
+    def polyline(xs: Any, ys: Any) -> str:
+        return " ".join(point(x_value, y_value) for x_value, y_value in zip(xs, ys))
+
+    done = np.asarray(terminated, dtype=bool) | np.asarray(truncated, dtype=bool)
+    collision = np.asarray(collisions, dtype=bool)
+    off_track = np.asarray(off_tracks, dtype=bool)
+    segments: list[Any] = []
+    start = 0
+    for index in np.flatnonzero(done):
+        segments.append(pose_array[start : index + 1])
+        start = int(index) + 1
+    if start < pose_array.shape[0]:
+        segments.append(pose_array[start:])
+
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        (
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{canvas_width:.0f}" '
+            f'height="{canvas_height:.0f}" viewBox="0 0 {canvas_width:.0f} '
+            f'{canvas_height:.0f}">'
+        ),
+        '<rect width="100%" height="100%" fill="#f8fafc"/>',
+        '<g fill="none" stroke-linejoin="round" stroke-linecap="round">',
+        f'<polyline points="{polyline(left_x, left_y)}" stroke="#111827" stroke-width="2"/>',
+        f'<polyline points="{polyline(right_x, right_y)}" stroke="#111827" stroke-width="2"/>',
+        (
+            f'<polyline points="{polyline(center_x, center_y)}" stroke="#a855f7" '
+            'stroke-width="1.5" stroke-dasharray="6 5"/>'
+        ),
+    ]
+    for segment in segments:
+        if segment.shape[0] >= 2:
+            lines.append(
+                f'<polyline points="{polyline(segment[:, 0], segment[:, 1])}" '
+                'stroke="#0284c7" stroke-width="2" opacity="0.8"/>'
+            )
+    lines.append('</g>')
+    for index in np.flatnonzero(done):
+        color = "#dc2626" if collision[index] else "#f97316"
+        cx, cy = point(pose_array[index, 0], pose_array[index, 1]).split(",")
+        lines.append(
+            f'<circle cx="{cx}" cy="{cy}" r="4" fill="{color}" '
+            'stroke="#ffffff" stroke-width="1"/>'
+        )
+    for index in np.flatnonzero(off_track & ~collision):
+        cx, cy = point(pose_array[index, 0], pose_array[index, 1]).split(",")
+        lines.append(f'<circle cx="{cx}" cy="{cy}" r="3" fill="#f97316"/>')
+    lines.extend(
+        (
+            '<g font-family="sans-serif" font-size="16" fill="#111827">',
+            '<text x="20" y="28">boundary</text>',
+            '<text x="120" y="28" fill="#a855f7">centerline order</text>',
+            '<text x="290" y="28" fill="#0284c7">rollout</text>',
+            '<text x="370" y="28" fill="#dc2626">collision</text>',
+            '<text x="455" y="28" fill="#f97316">off-track</text>',
+            '</g>',
+            '</svg>',
+        )
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _run_rollout(
     config: Any,
     *,
@@ -284,6 +408,7 @@ def _run_rollout(
     speed_multiplier: float,
     ego_action_values: tuple[float, float],
     npc_action_values: tuple[float, float],
+    trace_svg: Path | None,
 ) -> dict[str, Any]:
     _require_submodule()
 
@@ -499,6 +624,7 @@ def _run_rollout(
                     result.diagnostics.off_track,
                     result.diagnostics.race_complete,
                     result.diagnostics.unrecoverable,
+                    current_state.simulator_state.cartesian_states[0, 0:5],
                 )
                 next_carry = (
                     result.state,
@@ -544,6 +670,7 @@ def _run_rollout(
                 result.diagnostics.off_track,
                 result.diagnostics.race_complete,
                 result.diagnostics.unrecoverable,
+                current_state.simulator_state.cartesian_states[0, 0:5],
             )
             return (result.state, result.observation, current_key), metrics
 
@@ -574,6 +701,7 @@ def _run_rollout(
         off_tracks,
         race_completes,
         unrecoverables,
+        ego_poses,
     ) = jax.device_get(metric_history)
     observation_array = np.asarray(jax.device_get(final_observation))
     rewards_array = np.asarray(rewards)
@@ -611,6 +739,16 @@ def _run_rollout(
     teacher_stable = (
         action_source != "pure-pursuit" or unexpected_termination_count == 0
     )
+    if trace_svg is not None:
+        _write_trace_svg(
+            trace_svg,
+            simulator.track,
+            ego_poses,
+            terminated,
+            truncated,
+            collisions,
+            off_tracks,
+        )
     return {
         "schema_version": 1,
         "rollout": "single_environment",
@@ -667,6 +805,7 @@ def _run_rollout(
         "teacher_stable": (
             teacher_stable if action_source == "pure-pursuit" else None
         ),
+        "trace_svg": str(trace_svg) if trace_svg is not None else None,
         "pure_pursuit": (
             {"lookahead": lookahead, "speed_multiplier": speed_multiplier}
             if action_source == "pure-pursuit"
@@ -703,6 +842,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--npc-steering", type=_finite_float, default=0.0)
     parser.add_argument("--npc-acceleration", type=_finite_float, default=0.0)
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--trace-svg",
+        type=Path,
+        help="Render centerline, track boundaries, trajectory, and termination points.",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -782,6 +926,7 @@ def main() -> int:
                         "submodule_initialized": (
                             F1TENTH_SUBMODULE / "f1tenth_gym_jax"
                         ).is_dir(),
+                        "trace_svg": str(args.trace_svg) if args.trace_svg else None,
                     },
                     indent=2,
                     sort_keys=True,
@@ -798,6 +943,7 @@ def main() -> int:
             speed_multiplier=speed_multiplier,
             ego_action_values=ego_action_values,
             npc_action_values=npc_action_values,
+            trace_svg=args.trace_svg,
         )
         _write_json(result, args.output)
         if not result["healthy"]:
