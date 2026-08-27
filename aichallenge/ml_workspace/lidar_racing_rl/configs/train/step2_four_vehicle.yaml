@@ -1,3 +1,5 @@
+# @package _global_
+
 defaults:
   # AWSIM-calibrated response randomization is not connected to the simulator
   # yet. Keep the runnable Step 2 prototype on dynamic LiDAR only.

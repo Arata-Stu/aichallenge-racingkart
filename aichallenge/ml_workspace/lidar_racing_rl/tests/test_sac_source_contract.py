@@ -262,6 +262,14 @@ class SACSourceContractTest(unittest.TestCase):
         source = (SCRIPT_ROOT / "benchmark_env.py").read_text(encoding="utf-8")
         self.assertIn('f"++env.num_envs={args.num_envs}"', source)
 
+    def test_train_primary_configs_compose_into_the_global_package(self) -> None:
+        for filename in ("step1_single_vehicle.yaml", "step2_four_vehicle.yaml"):
+            source = (
+                PROJECT_ROOT / "configs" / "train" / filename
+            ).read_text(encoding="utf-8")
+            with self.subTest(filename=filename):
+                self.assertTrue(source.startswith("# @package _global_\n"))
+
     def test_action_steering_limit_matches_authoritative_vehicle_metadata(self) -> None:
         repository_root = PROJECT_ROOT.parents[2]
         source_paths = (
