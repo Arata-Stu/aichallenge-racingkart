@@ -59,9 +59,12 @@ reward:
     progress: 1.0
     relative_progress: 0.0
     pass: 0.0
-    collision: 10.0
+    # A typical failed policy advances roughly 40 m before terminating.  The
+    # terminal costs must dominate that progress so crashing out is not a
+    # positive-return shortcut.
+    collision: 50.0
     unsafe_contact: 0.0
-    off_track: 10.0
+    off_track: 100.0
     smoothness: 0.05
     reverse: 1.0
     stalled_behind: 0.0

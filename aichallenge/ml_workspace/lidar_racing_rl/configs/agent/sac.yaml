@@ -35,9 +35,11 @@ critic:
   hidden_sizes: [256, 256]
 
 optimizer:
-  actor_learning_rate: 0.0003
-  critic_learning_rate: 0.0003
-  temperature_learning_rate: 0.0003
+  # Conservative rates for the sustained UTD=1 run.  The former 3e-4 rates
+  # reached an unsafe high-progress/off-track policy before 180k transitions.
+  actor_learning_rate: 0.0001
+  critic_learning_rate: 0.0001
+  temperature_learning_rate: 0.0001
   initial_temperature: 1.0
 
 update:
@@ -52,9 +54,10 @@ update:
 
 replay_buffer:
   implementation: jax_ring
-  # float16 current+next 4x2x360 observations use about 1.07 GiB at this size.
-  capacity: 100000
-  warmup_transitions: 10000
+  # Measured allocation is about 1.15 GB (1.07 GiB) per 100k entries.  250k
+  # keeps more diversity while leaving headroom on an 8 GiB RTX 4060.
+  capacity: 250000
+  warmup_transitions: 50000
   observation_storage_dtype: float16
   store_fields: [observation, action, reward, terminated, truncated, next_observation]
   ego_only: true

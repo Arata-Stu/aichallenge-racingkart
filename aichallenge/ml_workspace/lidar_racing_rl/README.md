@@ -200,6 +200,8 @@ checkpointにはReplay Bufferと環境状態を含めません。再開時はAct
 
 学習ログは報酬とは別に、1 transitionあたりのコース進捗（m・周回比）、シミュレーション時間あたりの進捗（m/s）、完了episodeに対する完走・コースアウト・衝突率を記録します。報酬が改善していても進捗が停滞していないか、逆にペナルティで報酬が低くても走行距離が伸びているかを分けて判断します。
 
+Step 1の既定は、UTD比1での長時間更新を安定させるためActor/Critic/temperatureの学習率を`1e-4`、Replay容量を25万件、教師warmupを5万transitionとします。25万件のReplayは実測比で約2.88 GB（2.69 GiB）を見込み、8 GiB GPUにモデル・XLA用の余裕を残します。コースアウトと衝突の終了罰は、それまでに得る進捗報酬を上回る尺度にして、速くコースアウトする方策が正のreturnを得る近道を防ぎます。
+
 smokeでNaNなし、Replay sample、Actor/Critic更新、checkpoint保存・warm restart、決定論評価、Flax/PyTorch parityを確認してから、`--max-transitions`を外してStep 1本学習へ進みます。Step 2のsourceには相対進行、passヒステリシス、安全接触、追従停滞の報酬と評価指標まで接続済みですが、実行はStep 1成立、4台rollout、NPC安全性をUbuntu上で確認してから行ってください。
 
 export済みbundleはchecksumを検証してROS 2パッケージへ配置します。既存modelの置換は明示的に`LIDAR_RL_INSTALL_ARGS=--force`を指定します。

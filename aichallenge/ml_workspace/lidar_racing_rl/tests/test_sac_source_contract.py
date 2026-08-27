@@ -198,11 +198,21 @@ class SACSourceContractTest(unittest.TestCase):
         environment_config = (config_root / "env" / "base.yaml").read_text(
             encoding="utf-8"
         )
+        step1_config = (config_root / "train" / "step1_single_vehicle.yaml").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn("updates_per_collection: 64", agent_config)
+        self.assertIn("actor_learning_rate: 0.0001", agent_config)
+        self.assertIn("critic_learning_rate: 0.0001", agent_config)
+        self.assertIn("temperature_learning_rate: 0.0001", agent_config)
+        self.assertIn("capacity: 250000", agent_config)
+        self.assertIn("warmup_transitions: 50000", agent_config)
         self.assertIn("save_interval_updates: 50000", agent_config)
         self.assertIn("keep_last: 20", agent_config)
         self.assertIn("num_envs: 64", environment_config)
+        self.assertIn("collision: 50.0", step1_config)
+        self.assertIn("off_track: 100.0", step1_config)
 
     def test_training_metrics_report_progress_separately_from_reward(self) -> None:
         source = (SAC_ROOT / "trainer.py").read_text(encoding="utf-8")
