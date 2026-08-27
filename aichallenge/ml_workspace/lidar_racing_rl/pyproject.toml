@@ -7,7 +7,7 @@ name = "lidar-racing-rl"
 version = "0.1.0"
 description = "LiDAR-only JAX reinforcement learning for the Automotive AI Challenge racing kart"
 readme = "README.md"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.13"
 license = { text = "Apache-2.0" }
 dependencies = [
   "distrax",
@@ -32,7 +32,9 @@ cuda = [
 # The path source is intentionally optional. Initialize the submodule before syncing.
 f1tenth = ["f1tenth-gym-jax", "jax-pf"]
 # Match the AI Challenge runtime's state_dict writer/reader version. PyTorch is
-# required only for export/parity checks, not for JAX training.
+# required only for export/parity checks, not for JAX training. Linux x86_64
+# resolves it from the official CPU index so its bundled cuDNN 8 cannot collide
+# with the JAX CUDA plugin's cuDNN 9 runtime.
 export = ["torch==2.3.1"]
 
 [dependency-groups]
@@ -50,6 +52,14 @@ f1tenth-gym-jax = { path = "repos/f1tenth_gym_jax", editable = true }
 # its own project. Repeat it at the root with the commit from upstream's lock
 # so dependency resolution cannot silently move with jax_pf/main.
 jax-pf = { git = "https://github.com/hzheng40/jax_pf", rev = "1b1417d7d2afbf24a9c6594195c2e872a6b4460a" }
+torch = [
+  { index = "pytorch-cpu", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.uv]
 # jax-pf's package metadata still caps JAX below 0.7, while the pinned source

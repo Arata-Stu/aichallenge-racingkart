@@ -59,6 +59,8 @@ def _parse_data_files() -> dict[str, int]:
 
     root_project = parsed_toml[PROJECT_ROOT / "pyproject.toml"]
     submodule_project = parsed_toml[SUBMODULE_ROOT / "pyproject.toml"]
+    if root_project["project"]["requires-python"] != ">=3.11,<3.13":
+        raise RuntimeError("root project must remain on Python 3.11-3.12")
     expected_jax = "jax>=0.7.2,<0.8"
     root_dependencies = root_project["project"]["dependencies"]
     if expected_jax not in root_dependencies:
@@ -81,6 +83,21 @@ def _parse_data_files() -> dict[str, int]:
     jax_pf_source = root_project["tool"]["uv"]["sources"]["jax-pf"]
     if jax_pf_source.get("rev") != "1b1417d7d2afbf24a9c6594195c2e872a6b4460a":
         raise RuntimeError("jax-pf must remain pinned to the audited commit")
+    torch_sources = root_project["tool"]["uv"]["sources"]["torch"]
+    expected_torch_source = {
+        "index": "pytorch-cpu",
+        "marker": "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    }
+    if expected_torch_source not in torch_sources:
+        raise RuntimeError("Linux x86_64 Torch must use the official CPU index")
+    pytorch_indexes = {
+        entry["name"]: entry for entry in root_project["tool"]["uv"]["index"]
+    }
+    pytorch_cpu = pytorch_indexes.get("pytorch-cpu", {})
+    if pytorch_cpu.get("url") != "https://download.pytorch.org/whl/cpu":
+        raise RuntimeError("PyTorch CPU index URL does not match the official index")
+    if pytorch_cpu.get("explicit") is not True:
+        raise RuntimeError("PyTorch CPU index must remain explicit")
 
     json_files = sorted(
         path

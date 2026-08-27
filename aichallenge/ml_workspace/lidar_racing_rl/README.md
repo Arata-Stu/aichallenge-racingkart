@@ -95,6 +95,9 @@ JAX 0.7.2で解決しています。path dependency側のuv overrideは親へ継
 親`pyproject.toml`にも同じJAX 0.7互換overrideを明示しています。overrideで
 `jax[cuda12]`のextra情報が失われてもCPU版へ縮退しないよう、Linux CUDA環境では
 `jax-cuda12-plugin[with-cuda]`も明示的に同期します。
+Flax→PyTorch変換とparity確認はGPUを必要としないため、Linux x86_64ではPyTorch
+2.3.1を公式CPU indexから取得します。これによりPyTorch同梱cuDNN 8とJAX側cuDNN 9を
+同じlockへ混在させません。専用imageの正準Pythonは3.12です。
 
 ```bash
 # CPU。imageをbuildし、uv.lockを生成してCPU named volumeへ同期する
