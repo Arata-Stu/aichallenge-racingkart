@@ -282,6 +282,8 @@ def _write_trace_svg(
     truncated: Any,
     collisions: Any,
     off_tracks: Any,
+    vehicle_length: float,
+    vehicle_width: float,
 ) -> None:
     """Render the ordered centerline, boundaries, and rollout trace to SVG."""
 
@@ -384,6 +386,27 @@ def _write_trace_svg(
         lines.append(
             f'<circle cx="{cx}" cy="{cy}" r="4" fill="{color}" '
             'stroke="#ffffff" stroke-width="1"/>'
+        )
+        yaw = pose_array[index, 2]
+        local_corners = np.asarray(
+            [
+                [0.5 * vehicle_length, 0.5 * vehicle_width],
+                [0.5 * vehicle_length, -0.5 * vehicle_width],
+                [-0.5 * vehicle_length, -0.5 * vehicle_width],
+                [-0.5 * vehicle_length, 0.5 * vehicle_width],
+            ]
+        )
+        rotation = np.asarray(
+            [
+                [np.cos(yaw), -np.sin(yaw)],
+                [np.sin(yaw), np.cos(yaw)],
+            ]
+        )
+        corners = local_corners @ rotation.T + pose_array[index, 0:2]
+        lines.append(
+            f'<polygon points="{polyline(corners[:, 0], corners[:, 1])}" '
+            f'fill="{color}" fill-opacity="0.12" stroke="{color}" '
+            'stroke-width="1"/>'
         )
     for index in np.flatnonzero(off_track & ~collision):
         cx, cy = point(pose_array[index, 0], pose_array[index, 1]).split(",")
@@ -630,7 +653,8 @@ def _run_rollout(
                     result.diagnostics.off_track,
                     result.diagnostics.race_complete,
                     result.diagnostics.unrecoverable,
-                    current_state.simulator_state.cartesian_states[0, 0:5],
+                    result.diagnostics.terminal_ego_pose,
+                    result.diagnostics.terminal_ego_frenet_pose,
                 )
                 next_carry = (
                     result.state,
@@ -676,7 +700,8 @@ def _run_rollout(
                 result.diagnostics.off_track,
                 result.diagnostics.race_complete,
                 result.diagnostics.unrecoverable,
-                current_state.simulator_state.cartesian_states[0, 0:5],
+                result.diagnostics.terminal_ego_pose,
+                result.diagnostics.terminal_ego_frenet_pose,
             )
             return (result.state, result.observation, current_key), metrics
 
@@ -708,6 +733,7 @@ def _run_rollout(
         race_completes,
         unrecoverables,
         ego_poses,
+        ego_frenet_poses,
     ) = jax.device_get(metric_history)
     observation_array = np.asarray(jax.device_get(final_observation))
     rewards_array = np.asarray(rewards)
@@ -742,6 +768,27 @@ def _run_rollout(
             | np.asarray(unrecoverables)
         )
     )
+    frenet_array = np.asarray(ego_frenet_poses, dtype=float)
+    sample_s = np.asarray(simulator.track.centerline.s, dtype=float)
+    query_s = np.mod(frenet_array[:, 0], float(simulator.track.s_frame_max))
+    left_width = np.interp(query_s, sample_s, simulator.track.left_widths)
+    right_width = np.interp(query_s, sample_s, simulator.track.right_widths)
+    lateral_error = frenet_array[:, 1]
+    heading_error = frenet_array[:, 2]
+    body_clearance = (
+        0.5 * settings.vehicle_length * np.abs(np.sin(heading_error))
+        + 0.5 * settings.vehicle_width * np.abs(np.cos(heading_error))
+    )
+    boundary_margin = np.where(
+        lateral_error >= 0.0,
+        left_width - lateral_error - body_clearance,
+        right_width + lateral_error - body_clearance,
+    )
+    unexpected_mask = (
+        np.asarray(collisions, dtype=bool)
+        | np.asarray(off_tracks, dtype=bool)
+        | np.asarray(unrecoverables, dtype=bool)
+    )
     teacher_stable = (
         action_source != "pure-pursuit" or unexpected_termination_count == 0
     )
@@ -754,6 +801,8 @@ def _run_rollout(
             truncated,
             collisions,
             off_tracks,
+            settings.vehicle_length,
+            settings.vehicle_width,
         )
     return {
         "schema_version": 1,
@@ -807,6 +856,22 @@ def _run_rollout(
             "race_complete": race_complete_count,
             "unrecoverable": unrecoverable_count,
             "unexpected": unexpected_termination_count,
+        },
+        "track_clearance": {
+            "vehicle_length": settings.vehicle_length,
+            "vehicle_width": settings.vehicle_width,
+            "maximum_absolute_lateral_error": float(
+                np.max(np.abs(lateral_error))
+            ),
+            "maximum_absolute_heading_error": float(
+                np.max(np.abs(heading_error))
+            ),
+            "minimum_body_boundary_margin": float(np.min(boundary_margin)),
+            "minimum_unexpected_body_boundary_margin": (
+                float(np.min(boundary_margin[unexpected_mask]))
+                if np.any(unexpected_mask)
+                else None
+            ),
         },
         "teacher_stable": (
             teacher_stable if action_source == "pure-pursuit" else None

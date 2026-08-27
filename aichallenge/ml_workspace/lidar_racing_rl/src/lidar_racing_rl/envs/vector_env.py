@@ -345,6 +345,8 @@ class StepDiagnostics(NamedTuple):
     opponent_present: jax.Array
     collision_with_opponent: jax.Array
     collision_with_wall: jax.Array
+    terminal_ego_pose: jax.Array
+    terminal_ego_frenet_pose: jax.Array
 
 
 class StepResult(NamedTuple):
@@ -759,6 +761,10 @@ class LidarRacingEnv:
                 opponent_present=opponent_present,
                 collision_with_opponent=collision_with_opponent,
                 collision_with_wall=collision_with_wall,
+                terminal_ego_pose=simulator_state.cartesian_states[
+                    EGO_INDEX, jnp.asarray([0, 1, 4])
+                ],
+                terminal_ego_frenet_pose=ego_frenet,
             ),
         )
 
