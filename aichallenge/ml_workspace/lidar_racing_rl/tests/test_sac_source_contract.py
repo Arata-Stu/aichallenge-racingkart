@@ -258,6 +258,10 @@ class SACSourceContractTest(unittest.TestCase):
         self.assertIn("vehicle-response domain randomization is not", make_env_source)
         self.assertIn("connected to F1TENTH Gym JAX yet", make_env_source)
 
+    def test_benchmark_num_envs_override_handles_structured_hydra_config(self) -> None:
+        source = (SCRIPT_ROOT / "benchmark_env.py").read_text(encoding="utf-8")
+        self.assertIn('f"++env.num_envs={args.num_envs}"', source)
+
     def test_action_steering_limit_matches_authoritative_vehicle_metadata(self) -> None:
         repository_root = PROJECT_ROOT.parents[2]
         source_paths = (

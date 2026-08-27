@@ -479,7 +479,10 @@ def _parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = _parser().parse_args()
     try:
-        overrides = [*args.overrides, f"env.num_envs={args.num_envs}"]
+        # Hydra's struct composition can omit env.num_envs when a config-group
+        # package is selected. ``++`` is intentional: override when present,
+        # add when absent, then let the validator enforce the resolved value.
+        overrides = [*args.overrides, f"++env.num_envs={args.num_envs}"]
         config = _compose_config(args.config_name, overrides)
         errors = _validate_benchmark_config(config)
         if errors:
