@@ -126,7 +126,7 @@ def deterministic_parity_error(
     import jax
     import torch
 
-    array = np.asarray(observation, dtype=np.float32)
+    array = np.array(observation, dtype=np.float32, copy=True, order="C")
     flax_output = flax_actor.apply(
         flax_variables,
         array,
