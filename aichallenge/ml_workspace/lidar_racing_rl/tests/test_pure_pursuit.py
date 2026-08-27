@@ -73,6 +73,37 @@ def test_pure_pursuit_accepts_distinct_waypoint_line_per_npc() -> None:
     np.testing.assert_allclose(actions[:, 0], 0.0, atol=1.0e-6)
 
 
+def test_pure_pursuit_does_not_jump_to_a_nearby_later_track_segment() -> None:
+    state = jnp.array([[0.0, 0.0, 0.0, 1.0, 0.0]])
+    # The [1, 1] point is geometrically closer to a 1 m lookahead than the
+    # next ordered point [2, 0], but belongs to the returning track segment.
+    waypoints = jnp.array(
+        [
+            [0.0, 0.0, 2.0],
+            [2.0, 0.0, 2.0],
+            [4.0, 0.0, 2.0],
+            [4.0, 1.0, 2.0],
+            [1.0, 1.0, 2.0],
+            [0.0, 1.0, 2.0],
+        ]
+    )
+
+    action = pure_pursuit_actions(
+        state,
+        waypoints,
+        lookahead=jnp.array([1.0]),
+        speed_multiplier=jnp.ones((1,)),
+        wheelbase=0.3302,
+        control_dt=0.05,
+        steering_min=-0.4189,
+        steering_max=0.4189,
+        acceleration_min=-9.51,
+        acceleration_max=9.51,
+    )
+
+    np.testing.assert_allclose(action[0, 0], 0.0, atol=1.0e-6)
+
+
 def test_following_controller_slows_for_leader() -> None:
     all_states = jnp.array(
         [

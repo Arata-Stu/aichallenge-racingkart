@@ -91,16 +91,32 @@ def pure_pursuit_actions(
     cos_yaw = jnp.cos(yaw)
     sin_yaw = jnp.sin(yaw)
 
-    local_x = offsets[..., 0] * cos_yaw + offsets[..., 1] * sin_yaw
     local_y = -offsets[..., 0] * sin_yaw + offsets[..., 1] * cos_yaw
-    distances = jnp.hypot(local_x, local_y)
+    distances = jnp.linalg.norm(offsets, axis=-1)
 
-    forward = local_x > 0.0
-    lookahead_error = jnp.abs(distances - lookahead[:, None])
-    forward_score = jnp.where(forward, lookahead_error, jnp.inf)
-    forward_index = jnp.argmin(forward_score, axis=1)
+    # Preserve the configured closed-loop waypoint order. Selecting from every
+    # geometrically forward point can jump to a nearby but topologically
+    # unrelated track segment. Start at the nearest waypoint and walk only in
+    # the reference-line direction until the lookahead radius is reached.
     nearest_index = jnp.argmin(distances, axis=1)
-    target_index = jnp.where(jnp.any(forward, axis=1), forward_index, nearest_index)
+    waypoint_count = vehicle_waypoints.shape[1]
+    ordered_indices = (
+        nearest_index[:, None] + jnp.arange(waypoint_count)[None, :]
+    ) % waypoint_count
+    ordered_distances = jnp.take_along_axis(distances, ordered_indices, axis=1)
+    reached_lookahead = ordered_distances >= lookahead[:, None]
+    first_reached_offset = jnp.argmax(reached_lookahead, axis=1)
+    fallback_offset = jnp.full_like(first_reached_offset, waypoint_count - 1)
+    target_offset = jnp.where(
+        jnp.any(reached_lookahead, axis=1),
+        first_reached_offset,
+        fallback_offset,
+    )
+    target_index = jnp.take_along_axis(
+        ordered_indices,
+        target_offset[:, None],
+        axis=1,
+    )[:, 0]
 
     target_y = jnp.take_along_axis(local_y, target_index[:, None], axis=1)[:, 0]
     target_distance = jnp.take_along_axis(
