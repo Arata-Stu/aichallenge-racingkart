@@ -202,6 +202,8 @@ checkpointにはReplay Bufferと環境状態を含めません。再開時はAct
 
 Step 1の既定は、UTD比1での長時間更新を安定させるためActor/Critic/temperatureの学習率を`1e-4`、Replay容量を15万件、教師warmupを5万transitionとします。15万件のReplayは実測比で約1.73 GB（1.61 GiB）を見込み、8 GiB GPUにモデル・XLA用の余裕を残します。コースアウトと衝突の終了罰は、それまでに得る進捗報酬を上回る尺度にして、速くコースアウトする方策が正のreturnを得る近道を防ぎます。
 
+Step 1はまず車速上限とPure Pursuit基準速度を5 m/sに固定します。またTrajectory-Aided Learning（TAL）に倣い、Actorの正規化操舵・加速度actionと、GT poseから古典plannerが選ぶ基準actionとの差に応じて最大`0.2`のshaped rewardを加えます。原論文は操舵・速度actionですが、本実装の制御契約は操舵・加速度なので正規化action空間で適応します。基準actionはreward境界だけで消費し、Actor/Critic observationとReplayの追加fieldには含めません。学習ログには`mean_trajectory_aided_reward_per_transition`を記録します。
+
 GPU overlayはJAXのVRAM一括事前予約を無効化し、既定でCUDA async allocatorを使います。大きなReplay配列とXLA実行領域の間で連続領域を確保できない断片化を抑えるためです。RTX 4060 Laptop GPUでは25万件が1.34 GiBの連続配列確保に失敗したため、allocatorだけで無理に詰めず15万件を正準値とします。
 
 smokeでNaNなし、Replay sample、Actor/Critic更新、checkpoint保存・warm restart、決定論評価、Flax/PyTorch parityを確認してから、`--max-transitions`を外してStep 1本学習へ進みます。Step 2のsourceには相対進行、passヒステリシス、安全接触、追従停滞の報酬と評価指標まで接続済みですが、実行はStep 1成立、4台rollout、NPC安全性をUbuntu上で確認してから行ってください。

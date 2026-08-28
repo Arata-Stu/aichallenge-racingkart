@@ -36,7 +36,7 @@ teacher:
   enabled_for_rollout_smoke: true
   type: pure_pursuit
   reference_line: centerline
-  base_target_speed: 8.0
+  base_target_speed: 5.0
   lookahead: 1.0
   speed_multiplier: 1.0
   speed_profile:
@@ -44,6 +44,10 @@ teacher:
     minimum_corner_speed: 3.0
     maximum_lateral_acceleration: 3.0
   normalized_action_noise_std: 0.1
+
+vehicle:
+  vehicle:
+    max_velocity: 5.0
 
 reward:
   progress: true
@@ -55,6 +59,10 @@ reward:
   smoothness: true
   reverse: true
   stalled_behind_vehicle: false
+  trajectory_aided:
+    enabled: true
+    # TAL uses 0.2 times clipped agreement with the classical planner action.
+    weight: 0.2
   weights:
     progress: 1.0
     relative_progress: 0.0

@@ -6,6 +6,7 @@ import numpy as np
 from lidar_racing_rl.envs.reward import (
     step1_reward,
     step2_reward,
+    trajectory_aided_action_reward,
     wrapped_progress_delta,
 )
 from lidar_racing_rl.envs.termination import ego_done_flags
@@ -55,6 +56,15 @@ def test_step2_reward_composes_relative_pass_and_safety_terms() -> None:
     )
 
     np.testing.assert_allclose(reward, 9.9)
+
+
+def test_trajectory_aided_reward_clips_normalized_action_agreement() -> None:
+    agent = jnp.asarray([[0.1, 0.2], [1.0, -1.0], [0.4, 0.1]])
+    reference = jnp.asarray([[0.1, 0.2], [-1.0, 1.0], [0.0, 0.0]])
+
+    reward = trajectory_aided_action_reward(agent, reference, weight=0.2)
+
+    np.testing.assert_allclose(reward, jnp.asarray([0.2, 0.0, 0.1]))
 
 
 def test_time_limit_is_truncated_not_terminated() -> None:

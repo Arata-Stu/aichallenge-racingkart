@@ -7,6 +7,8 @@ to the Actor or Critic observation.
 
 from __future__ import annotations
 
+import math
+
 import jax
 import jax.numpy as jnp
 
@@ -83,4 +85,32 @@ def step2_reward(
     )
 
 
-__all__ = ["step1_reward", "step2_reward", "wrapped_progress_delta"]
+def trajectory_aided_action_reward(
+    agent_action: jax.Array,
+    reference_action: jax.Array,
+    *,
+    weight: float,
+) -> jax.Array:
+    """Reward agreement with a GT-only classical trajectory controller.
+
+    The published TAL formulation compares steering and speed commands.  This
+    project controls steering and acceleration, so both commands are compared
+    in their normalized ``[-1, 1]`` action space.  The reference action is used
+    only to produce this scalar reward and must never enter an observation.
+    """
+
+    if agent_action.shape != reference_action.shape or agent_action.shape[-1:] != (2,):
+        raise ValueError("TAL actions must have matching shape [..., 2]")
+    if isinstance(weight, bool) or not math.isfinite(weight) or weight < 0.0:
+        raise ValueError("TAL reward weight must be finite and non-negative")
+    action_error = jnp.sum(jnp.abs(agent_action - reference_action), axis=-1)
+    agreement = jnp.clip(1.0 - action_error, 0.0, 1.0)
+    return jnp.asarray(weight, dtype=agreement.dtype) * agreement
+
+
+__all__ = [
+    "step1_reward",
+    "step2_reward",
+    "trajectory_aided_action_reward",
+    "wrapped_progress_delta",
+]

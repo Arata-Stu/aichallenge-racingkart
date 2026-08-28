@@ -214,6 +214,10 @@ class SACSourceContractTest(unittest.TestCase):
         self.assertIn("num_envs: 64", environment_config)
         self.assertIn("collision: 50.0", step1_config)
         self.assertIn("off_track: 100.0", step1_config)
+        self.assertIn("base_target_speed: 5.0", step1_config)
+        self.assertIn("max_velocity: 5.0", step1_config)
+        self.assertIn("trajectory_aided:", step1_config)
+        self.assertIn("weight: 0.2", step1_config)
         self.assertIn("XLA_PYTHON_CLIENT_PREALLOCATE", gpu_compose)
         self.assertIn("cuda_malloc_async", gpu_compose)
 
@@ -227,11 +231,14 @@ class SACSourceContractTest(unittest.TestCase):
             "collision_rate_per_completed_episode",
             "off_track_rate_per_completed_episode",
             "race_completion_rate",
+            "mean_trajectory_aided_reward_per_transition",
         ):
             with self.subTest(metric=metric):
                 self.assertIn(f'"{metric}"', source)
         self.assertIn("result.diagnostics.progress_delta", source)
         self.assertIn("result.diagnostics.race_complete", source)
+        self.assertIn("trajectory_aided_action_reward", source)
+        self.assertIn("reference_actions", source)
 
     def test_train_and_export_clis_fail_closed_on_v1_model_shape(self) -> None:
         required_paths = (

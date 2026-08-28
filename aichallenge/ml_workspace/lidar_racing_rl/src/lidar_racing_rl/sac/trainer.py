@@ -67,6 +67,7 @@ def train_lidar_sac(
 
     from lidar_racing_rl.envs.action import normalize_physical_action
     from lidar_racing_rl.envs.make_env import make_f1tenth_env
+    from lidar_racing_rl.envs.reward import trajectory_aided_action_reward
     from lidar_racing_rl.envs.scan_corruption import ScanCorruptionConfig
     from lidar_racing_rl.envs.vector_env import LidarRacingEnv, RacingEnvSettings
     from lidar_racing_rl.models.actor_flax import TanhGaussianActor
@@ -346,6 +347,16 @@ def train_lidar_sac(
     )
     if teacher_noise_std < 0.0:
         raise ValueError("teacher normalized action noise cannot be negative")
+    trajectory_aided_config = _value(config, "reward", "trajectory_aided")
+    trajectory_aided_enabled = _value(trajectory_aided_config, "enabled")
+    if not isinstance(trajectory_aided_enabled, bool):
+        raise ValueError("reward.trajectory_aided.enabled must be boolean")
+    trajectory_aided_weight = _finite_float(
+        _value(trajectory_aided_config, "weight"),
+        "reward.trajectory_aided.weight",
+    )
+    if trajectory_aided_weight < 0.0:
+        raise ValueError("trajectory-aided reward weight cannot be negative")
 
     def teacher_one(cartesian_states: Any) -> Any:
         # GT is used only by this warmup teacher and never enters replay observations.
@@ -473,6 +484,7 @@ def train_lidar_sac(
     last_checkpoint_update: int | None = None
     latest_update_metrics = None
     reward_window = jnp.asarray(0.0, dtype=jnp.float32)
+    trajectory_aided_reward_window = jnp.asarray(0.0, dtype=jnp.float32)
     progress_window = jnp.asarray(0.0, dtype=jnp.float32)
     collision_window = jnp.asarray(0, dtype=jnp.int32)
     off_track_window = jnp.asarray(0, dtype=jnp.int32)
@@ -492,10 +504,15 @@ def train_lidar_sac(
     while session_environment_transitions < session_transition_budget:
         collections += 1
         action_key, policy_key, noise_key = jax.random.split(action_key, 3)
+        reference_actions = teacher_actions(
+            states.simulator_state.cartesian_states
+        )
         if replay_collected_transitions < warmup_transitions:
-            ego_actions = teacher_actions(states.simulator_state.cartesian_states)
-            noise = jax.random.normal(noise_key, ego_actions.shape) * teacher_noise_std
-            ego_actions = jnp.clip(ego_actions + noise, -1.0, 1.0)
+            noise = (
+                jax.random.normal(noise_key, reference_actions.shape)
+                * teacher_noise_std
+            )
+            ego_actions = jnp.clip(reference_actions + noise, -1.0, 1.0)
         else:
             ego_actions = actor_action(learner_state.actor_params, observations, policy_key)
 
@@ -518,6 +535,16 @@ def train_lidar_sac(
             ego_actions,
             npc_actions,
         )
+        trajectory_aided_rewards = jnp.where(
+            trajectory_aided_enabled,
+            trajectory_aided_action_reward(
+                ego_actions,
+                reference_actions,
+                weight=trajectory_aided_weight,
+            ),
+            jnp.zeros_like(result.reward),
+        )
+        result = result._replace(reward=result.reward + trajectory_aided_rewards)
         transitions = transition_from_step(observations, ego_actions, result)
         replay_state = insert_transitions(replay_state, transitions)
         session_environment_transitions += num_envs
@@ -537,6 +564,9 @@ def train_lidar_sac(
             )
 
         reward_window = reward_window + jnp.sum(result.reward)
+        trajectory_aided_reward_window = (
+            trajectory_aided_reward_window + jnp.sum(trajectory_aided_rewards)
+        )
         progress_window = progress_window + jnp.sum(result.diagnostics.progress_delta)
         collision_window = collision_window + jnp.sum(result.diagnostics.collision)
         off_track_window = off_track_window + jnp.sum(result.diagnostics.off_track)
@@ -598,6 +628,10 @@ def train_lidar_sac(
                     jax.device_get(reward_window)
                 )
                 / window_transitions,
+                "mean_trajectory_aided_reward_per_transition": float(
+                    jax.device_get(trajectory_aided_reward_window)
+                )
+                / window_transitions,
                 "mean_course_progress_meters_per_transition": (
                     progress / window_transitions
                 ),
@@ -648,6 +682,7 @@ def train_lidar_sac(
                 )
             append_jsonl(metrics_path, record)
             reward_window = jnp.asarray(0.0, dtype=jnp.float32)
+            trajectory_aided_reward_window = jnp.asarray(0.0, dtype=jnp.float32)
             progress_window = jnp.asarray(0.0, dtype=jnp.float32)
             collision_window = jnp.asarray(0, dtype=jnp.int32)
             off_track_window = jnp.asarray(0, dtype=jnp.int32)

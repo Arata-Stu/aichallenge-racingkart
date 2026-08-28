@@ -64,6 +64,9 @@ reward:
   smoothness: true
   reverse: true
   stalled_behind_vehicle: true
+  trajectory_aided:
+    enabled: false
+    weight: 0.0
   weights:
     progress: 1.0
     relative_progress: 0.5

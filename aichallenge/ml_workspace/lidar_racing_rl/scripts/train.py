@@ -85,7 +85,10 @@ def _validate_config(config: Any) -> tuple[list[str], list[str]]:
         "teacher.speed_profile.minimum_corner_speed",
         "teacher.speed_profile.maximum_lateral_acceleration",
         "teacher.normalized_action_noise_std",
+        "reward.trajectory_aided.enabled",
+        "reward.trajectory_aided.weight",
         "vehicle.vehicle.width",
+        "vehicle.vehicle.max_velocity",
     )
     for path in required_paths:
         if _select(config, path) is None:
@@ -258,6 +261,22 @@ def _validate_config(config: Any) -> tuple[list[str], list[str]]:
         errors.append("teacher corner speed must be within (0, base_target_speed]")
     if not _is_finite_number(lateral_acceleration) or lateral_acceleration <= 0.0:
         errors.append("teacher maximum lateral acceleration must be positive")
+    maximum_velocity = _select(config, "vehicle.vehicle.max_velocity")
+    if not _is_finite_number(maximum_velocity) or maximum_velocity <= 0.0:
+        errors.append("vehicle.vehicle.max_velocity must be finite and positive")
+    elif _is_finite_number(teacher_base_speed) and teacher_base_speed > maximum_velocity:
+        errors.append("teacher.base_target_speed cannot exceed vehicle max_velocity")
+    trajectory_aided_enabled = _select(config, "reward.trajectory_aided.enabled")
+    trajectory_aided_weight = _select(config, "reward.trajectory_aided.weight")
+    if not isinstance(trajectory_aided_enabled, bool):
+        errors.append("reward.trajectory_aided.enabled must be boolean")
+    if (
+        not _is_finite_number(trajectory_aided_weight)
+        or trajectory_aided_weight < 0.0
+    ):
+        errors.append("reward.trajectory_aided.weight must be finite and non-negative")
+    elif trajectory_aided_enabled and trajectory_aided_weight <= 0.0:
+        errors.append("enabled trajectory-aided reward requires a positive weight")
     vehicle_width = _select(config, "vehicle.vehicle.width")
     if not _is_finite_number(vehicle_width) or vehicle_width <= 0.0:
         errors.append("vehicle.vehicle.width must be finite and positive")
