@@ -157,6 +157,7 @@ def evaluate_lidar_policy(
     accumulator = initialize_evaluation_accumulator(num_envs)
     update_metrics = jax.jit(update_evaluation_accumulator)
     trace_poses: list[tuple[float, float, float]] = []
+    trace_npc_poses: list[tuple[tuple[float, float, float], ...]] = []
     trace_speeds: list[float] = []
     trace_actions: list[tuple[float, float]] = []
     trace_progress: list[float] = []
@@ -286,8 +287,11 @@ def evaluate_lidar_policy(
         done = result.terminated | result.truncated
         if trace_active:
             # Batched simulator state is [environment, agent, state].  Capture
-            # only Ego in the first visualized environment.
-            pose = jax.device_get(states.simulator_state.cartesian_states[0, 0])
+            # Ego and every NPC in the first visualized environment.
+            agent_poses = jax.device_get(
+                states.simulator_state.cartesian_states[0]
+            )
+            pose = agent_poses[0]
             action = jax.device_get(ego_actions[0])
             progress_delta = float(jax.device_get(diagnostics.progress_delta[0]))
             cumulative_trace_progress += progress_delta
@@ -296,6 +300,12 @@ def evaluate_lidar_policy(
             off_track = bool(jax.device_get(diagnostics.off_track[0]))
             truncated = bool(jax.device_get(result.truncated[0]))
             trace_poses.append((float(pose[0]), float(pose[1]), float(pose[4])))
+            trace_npc_poses.append(
+                tuple(
+                    (float(npc[0]), float(npc[1]), float(npc[4]))
+                    for npc in agent_poses[1:]
+                )
+            )
             trace_speeds.append(float(jax.device_get(diagnostics.ego_speed[0])))
             trace_actions.append((float(action[0]), float(action[1])))
             trace_progress.append(cumulative_trace_progress)
@@ -390,6 +400,7 @@ def evaluate_lidar_policy(
             left_widths=host_tuple(jnp.asarray(simulator.track.left_widths)),
             right_widths=host_tuple(jnp.asarray(simulator.track.right_widths)),
             poses=tuple(trace_poses),
+            npc_poses=tuple(trace_npc_poses),
             speeds=tuple(trace_speeds),
             actions=tuple(trace_actions),
             cumulative_progress=tuple(trace_progress),

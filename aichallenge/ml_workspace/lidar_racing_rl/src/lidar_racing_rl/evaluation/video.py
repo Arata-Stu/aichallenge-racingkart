@@ -17,6 +17,7 @@ class EvaluationTrace:
     left_widths: tuple[float, ...]
     right_widths: tuple[float, ...]
     poses: tuple[tuple[float, float, float], ...]
+    npc_poses: tuple[tuple[tuple[float, float, float], ...], ...]
     speeds: tuple[float, ...]
     actions: tuple[tuple[float, float], ...]
     cumulative_progress: tuple[float, ...]
@@ -57,6 +58,11 @@ class EvaluationTrace:
             )
         ):
             raise ValueError("evaluation video requires aligned rollout arrays")
+        if len(self.npc_poses) != sample_count:
+            raise ValueError("evaluation video requires aligned NPC poses")
+        npc_count = len(self.npc_poses[0])
+        if any(len(frame) != npc_count for frame in self.npc_poses):
+            raise ValueError("evaluation video requires a fixed NPC count")
         scalars = (
             *self.center_x,
             *self.center_y,
@@ -64,6 +70,12 @@ class EvaluationTrace:
             *self.left_widths,
             *self.right_widths,
             *(value for pose in self.poses for value in pose),
+            *(
+                value
+                for frame in self.npc_poses
+                for pose in frame
+                for value in pose
+            ),
             *self.speeds,
             *(value for action in self.actions for value in action),
             *self.cumulative_progress,
@@ -155,6 +167,9 @@ def render_evaluation_video(
     right_x = center_x - right_widths * normal_x
     right_y = center_y - right_widths * normal_y
     poses = np.asarray(trace.poses)
+    npc_poses = np.asarray(trace.npc_poses, dtype=float).reshape(
+        len(trace.poses), -1, 3
+    )
     actions = np.asarray(trace.actions)
     speeds = np.asarray(trace.speeds)
     progress = np.asarray(trace.cumulative_progress)
@@ -183,8 +198,30 @@ def render_evaluation_video(
     axis.set_title("Deterministic LiDAR policy rollout")
     (trail,) = axis.plot([], [], color="#0284c7", linewidth=2.0, alpha=0.9)
     (current,) = axis.plot([], [], "o", color="#dc2626", markersize=4)
-    car = Polygon(np.zeros((4, 2)), closed=True, facecolor="#ef4444", alpha=0.45)
+    car = Polygon(
+        np.zeros((4, 2)),
+        closed=True,
+        facecolor="#ef4444",
+        alpha=0.65,
+        label="Ego policy",
+    )
     axis.add_patch(car)
+    npc_colors = ("#f59e0b", "#10b981", "#6366f1")
+    npc_cars = []
+    for npc_index in range(npc_poses.shape[1]):
+        npc_car = Polygon(
+            np.zeros((4, 2)),
+            closed=True,
+            facecolor=npc_colors[npc_index % len(npc_colors)],
+            edgecolor="#111827",
+            linewidth=0.6,
+            alpha=0.75,
+            label=f"NPC {npc_index + 1}",
+        )
+        axis.add_patch(npc_car)
+        npc_cars.append(npc_car)
+    if npc_cars:
+        axis.legend(loc="lower left")
     status = axis.text(
         0.01,
         0.99,
@@ -212,6 +249,17 @@ def render_evaluation_video(
         x, y, yaw = poses[index]
         rotation = np.asarray([[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]])
         car.set_xy(local_corners @ rotation.T + np.asarray([x, y]))
+        for npc_car, npc_pose in zip(npc_cars, npc_poses[index], strict=True):
+            npc_x, npc_y, npc_yaw = npc_pose
+            npc_rotation = np.asarray(
+                [
+                    [np.cos(npc_yaw), -np.sin(npc_yaw)],
+                    [np.sin(npc_yaw), np.cos(npc_yaw)],
+                ]
+            )
+            npc_car.set_xy(
+                local_corners @ npc_rotation.T + np.asarray([npc_x, npc_y])
+            )
         trail.set_data(poses[: index + 1, 0], poses[: index + 1, 1])
         current.set_data([x], [y])
         completion = 100.0 * progress[index] / trace.track_length
@@ -234,7 +282,7 @@ def render_evaluation_video(
             f"({completion:5.1f}%)\n"
             f"state={terminal}"
         )
-        return trail, current, car, status
+        return trail, current, car, *npc_cars, status
 
     animation = FuncAnimation(
         figure,

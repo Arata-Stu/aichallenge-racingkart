@@ -10,7 +10,7 @@ from lidar_racing_rl.evaluation.video import EvaluationTrace, _frame_indices, fr
 
 
 class EvaluationVideoContractTest(unittest.TestCase):
-    def test_trace_selects_environment_and_ego_axes(self) -> None:
+    def test_trace_captures_every_agent_in_first_environment(self) -> None:
         evaluator = (
             Path(__file__).resolve().parents[1]
             / "src"
@@ -18,7 +18,8 @@ class EvaluationVideoContractTest(unittest.TestCase):
             / "evaluation"
             / "evaluator.py"
         ).read_text(encoding="utf-8")
-        self.assertIn("cartesian_states[0, 0]", evaluator)
+        self.assertIn("cartesian_states[0]", evaluator)
+        self.assertIn("for npc in agent_poses[1:]", evaluator)
 
     def test_four_times_playback_at_twenty_hz_keeps_every_fourth_sample(self) -> None:
         self.assertEqual(frame_stride(control_dt=0.05, fps=20, playback_speed=4.0), 4)
@@ -35,6 +36,7 @@ class EvaluationVideoContractTest(unittest.TestCase):
             left_widths=(1.0, 1.0, 1.0),
             right_widths=(1.0, 1.0, 1.0),
             poses=((0.0, 0.0, 0.0), (math.nan, 0.0, 0.0)),
+            npc_poses=((), ()),
             speeds=(0.0, 1.0),
             actions=((0.0, 0.0), (0.0, 0.0)),
             cumulative_progress=(0.0, 1.0),
@@ -48,6 +50,30 @@ class EvaluationVideoContractTest(unittest.TestCase):
             vehicle_width=0.31,
         )
         with self.assertRaisesRegex(ValueError, "non-finite"):
+            trace.validate()
+
+    def test_trace_rejects_npc_count_changes(self) -> None:
+        trace = EvaluationTrace(
+            center_x=(0.0, 1.0, 0.0),
+            center_y=(0.0, 0.0, 1.0),
+            center_yaw=(0.0, 1.0, 2.0),
+            left_widths=(1.0, 1.0, 1.0),
+            right_widths=(1.0, 1.0, 1.0),
+            poses=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0)),
+            npc_poses=(((2.0, 0.0, 0.0),), ()),
+            speeds=(0.0, 1.0),
+            actions=((0.0, 0.0), (0.0, 0.0)),
+            cumulative_progress=(0.0, 1.0),
+            race_complete=(False, False),
+            collision=(False, False),
+            off_track=(False, False),
+            truncated=(False, False),
+            control_dt=0.05,
+            track_length=10.0,
+            vehicle_length=0.58,
+            vehicle_width=0.31,
+        )
+        with self.assertRaisesRegex(ValueError, "fixed NPC count"):
             trace.validate()
 
     def test_sampling_arguments_are_fail_closed(self) -> None:
