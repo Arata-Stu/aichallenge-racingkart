@@ -183,6 +183,22 @@ def _validate_config(config: Any) -> tuple[list[str], list[str]]:
                 "past-policy opponents are not integrated; "
                 "training.opponent_pool_enabled must remain false"
             )
+        reset_spacing = _select(config, "env.reset.longitudinal_spacing")
+        safe_distance_max = _select(
+            config,
+            "npc.longitudinal_controller.safe_following_distance.max",
+        )
+        vehicle_length = _select(config, "vehicle.vehicle.length")
+        if (
+            _is_finite_number(reset_spacing)
+            and _is_finite_number(safe_distance_max)
+            and _is_finite_number(vehicle_length)
+            and reset_spacing < safe_distance_max + vehicle_length
+        ):
+            errors.append(
+                "Step 2 reset spacing must be at least the maximum NPC "
+                "safe-following distance plus vehicle length"
+            )
 
     if _select(config, "env.domain_randomization.enabled") is True:
         errors.append(

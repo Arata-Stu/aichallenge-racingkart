@@ -208,6 +208,17 @@ def npc_controller_step(
         next_history,
         parameters.control_delay_steps,
     )
+    # A delayed or scripted braking command must not carry an NPC through zero
+    # into reverse.  Clamp the final command using the current physical speed,
+    # after every delay/braking transformation has been applied.
+    minimum_nonreversing_acceleration = (
+        -jnp.maximum(npc_states[:, 3], 0.0) / control_dt
+    )
+    delayed_acceleration = jnp.maximum(
+        delayed_actions[:, 1],
+        minimum_nonreversing_acceleration,
+    )
+    delayed_actions = delayed_actions.at[:, 1].set(delayed_acceleration)
     return delayed_actions, NpcControllerState(action_history=next_history)
 
 

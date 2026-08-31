@@ -300,7 +300,26 @@ class SACSourceContractTest(unittest.TestCase):
         self.assertNotIn("- /env: domain_randomization", step2_config)
         self.assertIn("enabled: false", step2_config)
         self.assertIn("active_phase: null", step2_config)
-        self.assertIn("longitudinal_spacing: 8.0", step2_config)
+        self.assertIn("longitudinal_spacing: 12.0", step2_config)
+        self.assertIn("pass: 30.0", step2_config)
+        self.assertIn("collision: 50.0", step2_config)
+        self.assertIn("hold_steps: 10", step2_config)
+        self.assertIn("unsafe_contact_distance: 0.75", step2_config)
+
+        npc_config = (
+            PROJECT_ROOT / "configs" / "npc" / "pure_pursuit.yaml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("speed_multiplier: {min: 0.44, max: 0.53}", npc_config)
+
+        overtaking_source = (
+            PROJECT_ROOT
+            / "src"
+            / "lidar_racing_rl"
+            / "envs"
+            / "overtaking.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("continuous_gaps", overtaking_source)
+        self.assertIn("ego_delta - opponent_delta", overtaking_source)
 
         for path in (
             SAC_ROOT / "trainer.py",

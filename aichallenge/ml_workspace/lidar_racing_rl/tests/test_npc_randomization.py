@@ -39,6 +39,14 @@ def test_episode_parameters_are_independent_arrays_and_jittable() -> None:
     assert parameters.control_delay_steps.shape == (3,)
     assert bool(jnp.all(parameters.speed_multiplier >= 0.65))
     assert bool(jnp.all(parameters.speed_multiplier <= 1.05))
+    assert bool(jnp.all(jnp.diff(parameters.speed_multiplier) >= 0.0))
+
+
+def test_reset_spacing_includes_safe_distance_and_vehicle_length() -> None:
+    BOUNDS.validate_reset_spacing(8.0, 0.58)
+
+    with pytest.raises(ValueError, match="safe-following distance plus vehicle"):
+        BOUNDS.validate_reset_spacing(6.5, 0.58)
 
 
 def test_waypoint_offsets_create_separate_parallel_lines() -> None:

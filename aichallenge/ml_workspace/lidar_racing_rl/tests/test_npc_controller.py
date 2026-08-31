@@ -187,3 +187,27 @@ def test_delay_history_uses_each_npc_configured_step() -> None:
     np.testing.assert_allclose(first_actions[1:], 0.0, atol=1.0e-6)
     assert not bool(jnp.allclose(second_actions[1], 0.0))
     np.testing.assert_allclose(second_actions[2], 0.0, atol=1.0e-6)
+
+
+def test_final_acceleration_cannot_drive_an_npc_through_zero_speed() -> None:
+    all_states = jnp.array(
+        [
+            [0.2, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.1, 0.0],
+            [0.0, 4.0, 0.0, 0.1, 0.0],
+            [0.0, -4.0, 0.0, 0.1, 0.0],
+        ],
+        dtype=jnp.float32,
+    )
+    parameters = _parameters(
+        delays=jnp.zeros((3,), dtype=jnp.int32),
+        braking_enabled=jnp.ones((3,), dtype=bool),
+    )
+    state = initialize_npc_controller_state(
+        npc_count=3,
+        max_control_delay_steps=0,
+    )
+
+    actions, _ = _step(all_states, parameters, state, jnp.asarray(12))
+
+    assert bool(jnp.all(actions[:, 1] >= -1.0))

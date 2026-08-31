@@ -19,9 +19,13 @@ from lidar_racing_rl.envs.reward import wrapped_progress_delta
 class OvertakingState:
     """Per-opponent pass hysteresis state for one environment."""
 
+    previous_ego_s: jax.Array
+    previous_opponent_s: jax.Array
+    continuous_gaps: jax.Array
     armed_from_behind: jax.Array
     consecutive_ahead_steps: jax.Array
     cooldown_steps_remaining: jax.Array
+    passed_once: jax.Array
 
 
 def signed_opponent_gaps(
@@ -51,11 +55,18 @@ def initialize_overtaking_state(
     opponents = jnp.asarray(opponent_s)
     if opponents.ndim != 1:
         raise ValueError("opponent_s must have shape [opponents]")
-    gaps = signed_opponent_gaps(ego_s, opponents, track_length)
+    # Reset placement guarantees that every NPC is forward of Ego in array
+    # order. Keep that forward arc unwrapped from this point onward so an NPC
+    # lapping a slow Ego cannot masquerade as an Ego pass at the half-lap seam.
+    gaps = -jnp.mod(opponents - ego_s, track_length)
     return OvertakingState(
+        previous_ego_s=jnp.asarray(ego_s),
+        previous_opponent_s=opponents,
+        continuous_gaps=gaps,
         armed_from_behind=gaps <= -behind_distance,
         consecutive_ahead_steps=jnp.zeros(opponents.shape, dtype=jnp.int32),
         cooldown_steps_remaining=jnp.zeros(opponents.shape, dtype=jnp.int32),
+        passed_once=jnp.zeros(opponents.shape, dtype=jnp.bool_),
     )
 
 
@@ -93,14 +104,29 @@ def update_overtaking_state(
     if opponents.ndim != 1:
         raise ValueError("opponent_s must have shape [opponents]")
     for name, value in (
+        ("previous_opponent_s", state.previous_opponent_s),
+        ("continuous_gaps", state.continuous_gaps),
         ("armed_from_behind", state.armed_from_behind),
         ("consecutive_ahead_steps", state.consecutive_ahead_steps),
         ("cooldown_steps_remaining", state.cooldown_steps_remaining),
+        ("passed_once", state.passed_once),
     ):
         if value.shape != expected_shape:
             raise ValueError(f"{name} must match opponent_s shape")
+    if jnp.asarray(state.previous_ego_s).shape != ():
+        raise ValueError("previous_ego_s must be scalar")
 
-    gaps = signed_opponent_gaps(ego_s, opponents, track_length)
+    ego_delta = wrapped_progress_delta(
+        state.previous_ego_s,
+        ego_s,
+        track_length,
+    )
+    opponent_delta = wrapped_progress_delta(
+        state.previous_opponent_s,
+        opponents,
+        track_length,
+    )
+    gaps = state.continuous_gaps + ego_delta - opponent_delta
     remaining_cooldown = jnp.maximum(state.cooldown_steps_remaining - 1, 0)
     can_rearm = remaining_cooldown == 0
     armed = state.armed_from_behind | (
@@ -113,7 +139,11 @@ def update_overtaking_state(
         jnp.zeros_like(state.consecutive_ahead_steps),
     )
     pass_events = ahead_steps >= hold_steps
+    unique_pass_events = pass_events & ~state.passed_once
     next_state = OvertakingState(
+        previous_ego_s=jnp.asarray(ego_s),
+        previous_opponent_s=opponents,
+        continuous_gaps=gaps,
         armed_from_behind=jnp.where(pass_events, False, armed),
         consecutive_ahead_steps=jnp.where(pass_events, 0, ahead_steps),
         cooldown_steps_remaining=jnp.where(
@@ -121,8 +151,9 @@ def update_overtaking_state(
             jnp.asarray(cooldown_steps, dtype=jnp.int32),
             remaining_cooldown,
         ),
+        passed_once=state.passed_once | pass_events,
     )
-    return next_state, pass_events, gaps
+    return next_state, unique_pass_events, gaps
 
 
 def nearest_opponent_relative_progress(

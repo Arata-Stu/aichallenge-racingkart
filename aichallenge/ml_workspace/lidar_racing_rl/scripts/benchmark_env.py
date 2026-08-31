@@ -129,6 +129,22 @@ def _validate_benchmark_config(config: Any) -> list[str]:
         errors.append("benchmark must not claim an active curriculum phase")
     if _select(config, "training.opponent_pool_enabled") is not False:
         errors.append("past-policy opponents are not integrated into the benchmark")
+    reset_spacing = _select(config, "env.reset.longitudinal_spacing")
+    safe_distance_max = _select(
+        config,
+        "npc.longitudinal_controller.safe_following_distance.max",
+    )
+    vehicle_length = _select(config, "vehicle.vehicle.length")
+    if (
+        _is_finite_number(reset_spacing)
+        and _is_finite_number(safe_distance_max)
+        and _is_finite_number(vehicle_length)
+        and reset_spacing < safe_distance_max + vehicle_length
+    ):
+        errors.append(
+            "Step 2 reset spacing must be at least the maximum NPC "
+            "safe-following distance plus vehicle length"
+        )
     if _select(config, "env.domain_randomization.enabled") is True:
         errors.append(
             "AWSIM vehicle-response domain randomization is not integrated into "
@@ -276,6 +292,10 @@ def _run_benchmark(config: Any, *, steps: int, seed: int) -> dict[str, Any]:
     npc_count = settings.num_agents - 1
     npc_indices = jnp.arange(1, settings.num_agents, dtype=jnp.int32)
     npc_bounds = NpcRandomizationBounds.from_config(config.npc)
+    npc_bounds.validate_reset_spacing(
+        settings.reset_longitudinal_spacing,
+        settings.vehicle_length,
+    )
     validate_centerline_clearance(
         simulator,
         vehicle_width=settings.vehicle_width,
@@ -313,7 +333,7 @@ def _run_benchmark(config: Any, *, steps: int, seed: int) -> dict[str, Any]:
     steering_max = float(config.vehicle.vehicle.max_steering_angle)
     distance_gain = float(config.npc.longitudinal_controller.distance_gain)
     lateral_gate = float(config.npc.longitudinal_controller.lateral_gate)
-    minimum_speed = float(config.vehicle.vehicle.min_velocity)
+    minimum_speed = 0.0
 
     def sample_parameters(sample_key: Any) -> Any:
         return sample_npc_episode_parameters(
@@ -442,7 +462,11 @@ def _run_benchmark(config: Any, *, steps: int, seed: int) -> dict[str, Any]:
         "npc_controller": {
             "episode_randomization": True,
             "gt_safe_following": True,
-            "control_delay": True,
+            "control_delay": npc_bounds.control_delay_steps[1] > 0,
+            "braking_event": npc_bounds.braking_probability > 0.0,
+            "lateral_offset_randomization": (
+                npc_bounds.lateral_offset[0] != npc_bounds.lateral_offset[1]
+            ),
             "resample_on_ego_auto_reset": True,
         },
         "scan_corruption_configured": "scan_corruption" in config.env,

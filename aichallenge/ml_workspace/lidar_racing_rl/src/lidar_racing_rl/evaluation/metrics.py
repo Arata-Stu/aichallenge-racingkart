@@ -11,6 +11,9 @@ import jax.numpy as jnp
 from flax import struct
 
 
+STEP2_OPPONENT_COUNT = 3
+
+
 @struct.dataclass
 class EvaluationAccumulator:
     """Per-environment partial episodes and completed-episode totals."""
@@ -29,6 +32,7 @@ class EvaluationAccumulator:
     first_pass_step: jax.Array
     opponent_collision_seen: jax.Array
     wall_collision_seen: jax.Array
+    npc_collision_without_ego_seen: jax.Array
     unsafe_contact_seen: jax.Array
     unsafe_contact_steps: jax.Array
     following_steps: jax.Array
@@ -52,11 +56,13 @@ class EvaluationAccumulator:
     acceleration_variation_sum: jax.Array
     completed_opponent_episodes: jax.Array
     overtake_success_episodes: jax.Array
+    all_opponents_overtaken_episodes: jax.Array
     pass_count_sum: jax.Array
     first_pass_step_sum: jax.Array
     relative_progress_sum: jax.Array
     opponent_collision_episodes: jax.Array
     wall_collision_episodes: jax.Array
+    npc_collision_without_ego_episodes: jax.Array
     unsafe_contact_episodes: jax.Array
     unsafe_contact_step_sum: jax.Array
     following_step_sum: jax.Array
@@ -98,6 +104,7 @@ def initialize_evaluation_accumulator(
         first_pass_step=zero_ints,
         opponent_collision_seen=false,
         wall_collision_seen=false,
+        npc_collision_without_ego_seen=false,
         unsafe_contact_seen=false,
         unsafe_contact_steps=zero_ints,
         following_steps=zero_ints,
@@ -125,11 +132,13 @@ def initialize_evaluation_accumulator(
         acceleration_variation_sum=scalar_float,
         completed_opponent_episodes=scalar_int,
         overtake_success_episodes=scalar_int,
+        all_opponents_overtaken_episodes=scalar_int,
         pass_count_sum=scalar_int,
         first_pass_step_sum=scalar_int,
         relative_progress_sum=scalar_float,
         opponent_collision_episodes=scalar_int,
         wall_collision_episodes=scalar_int,
+        npc_collision_without_ego_episodes=scalar_int,
         unsafe_contact_episodes=scalar_int,
         unsafe_contact_step_sum=scalar_int,
         following_step_sum=scalar_int,
@@ -178,6 +187,7 @@ def update_evaluation_accumulator(
     pass_count: jax.Array,
     collision_with_opponent: jax.Array,
     collision_with_wall: jax.Array,
+    npc_collision_without_ego: jax.Array,
     unsafe_contact: jax.Array,
     following_vehicle: jax.Array,
     stalled_behind_vehicle: jax.Array,
@@ -204,6 +214,7 @@ def update_evaluation_accumulator(
         ("pass_count", pass_count),
         ("collision_with_opponent", collision_with_opponent),
         ("collision_with_wall", collision_with_wall),
+        ("npc_collision_without_ego", npc_collision_without_ego),
         ("unsafe_contact", unsafe_contact),
         ("following_vehicle", following_vehicle),
         ("stalled_behind_vehicle", stalled_behind_vehicle),
@@ -237,6 +248,9 @@ def update_evaluation_accumulator(
         state.opponent_collision_seen | collision_with_opponent
     )
     next_wall_collision_seen = state.wall_collision_seen | collision_with_wall
+    next_npc_collision_without_ego_seen = (
+        state.npc_collision_without_ego_seen | npc_collision_without_ego
+    )
     next_unsafe_contact_seen = state.unsafe_contact_seen | unsafe_contact
     next_unsafe_contact_steps = (
         state.unsafe_contact_steps + unsafe_contact.astype(jnp.int32)
@@ -270,6 +284,15 @@ def update_evaluation_accumulator(
     done_int = done.astype(jnp.int32)
     opponent_done = done & next_opponent_present_seen
     overtake_success = opponent_done & (next_pass_count > 0)
+    all_opponents_overtaken = (
+        opponent_done
+        & (next_pass_count >= STEP2_OPPONENT_COUNT)
+        & race_complete
+        & ~next_collision_seen
+        & ~next_off_track_seen
+        & ~next_opponent_collision_seen
+        & ~next_npc_collision_without_ego_seen
+    )
     completed_minimum_distance = jnp.where(
         opponent_done & jnp.isfinite(next_minimum_opponent_distance),
         next_minimum_opponent_distance,
@@ -295,6 +318,11 @@ def update_evaluation_accumulator(
             next_opponent_collision_seen,
         ),
         wall_collision_seen=jnp.where(done, False, next_wall_collision_seen),
+        npc_collision_without_ego_seen=jnp.where(
+            done,
+            False,
+            next_npc_collision_without_ego_seen,
+        ),
         unsafe_contact_seen=jnp.where(done, False, next_unsafe_contact_seen),
         unsafe_contact_steps=jnp.where(done, 0, next_unsafe_contact_steps),
         following_steps=jnp.where(done, 0, next_following_steps),
@@ -347,6 +375,10 @@ def update_evaluation_accumulator(
         overtake_success_episodes=(
             state.overtake_success_episodes + jnp.sum(overtake_success)
         ),
+        all_opponents_overtaken_episodes=(
+            state.all_opponents_overtaken_episodes
+            + jnp.sum(all_opponents_overtaken)
+        ),
         pass_count_sum=(
             state.pass_count_sum
             + jnp.sum(jnp.where(opponent_done, next_pass_count, 0))
@@ -366,6 +398,10 @@ def update_evaluation_accumulator(
         wall_collision_episodes=(
             state.wall_collision_episodes
             + jnp.sum(opponent_done & next_wall_collision_seen)
+        ),
+        npc_collision_without_ego_episodes=(
+            state.npc_collision_without_ego_episodes
+            + jnp.sum(opponent_done & next_npc_collision_without_ego_seen)
         ),
         unsafe_contact_episodes=(
             state.unsafe_contact_episodes
@@ -431,6 +467,9 @@ def evaluation_summary(state: EvaluationAccumulator) -> dict[str, jax.Array]:
         "overtake_success_rate": (
             state.overtake_success_episodes / opponent_episodes
         ),
+        "all_opponents_overtaken_rate": (
+            state.all_opponents_overtaken_episodes / opponent_episodes
+        ),
         "mean_passes_per_episode": state.pass_count_sum / opponent_episodes,
         "mean_steps_to_first_pass": (
             state.first_pass_step_sum / successful_overtakes
@@ -440,6 +479,9 @@ def evaluation_summary(state: EvaluationAccumulator) -> dict[str, jax.Array]:
             state.opponent_collision_episodes / opponent_episodes
         ),
         "wall_collision_rate": state.wall_collision_episodes / opponent_episodes,
+        "npc_collision_without_ego_rate": (
+            state.npc_collision_without_ego_episodes / opponent_episodes
+        ),
         "unsafe_contact_episode_rate": (
             state.unsafe_contact_episodes / opponent_episodes
         ),

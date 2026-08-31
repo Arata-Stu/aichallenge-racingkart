@@ -203,6 +203,22 @@ def _validate_config(
             errors.append("diagnostic rollout must not claim an active curriculum phase")
         if _select(config, "training.opponent_pool_enabled") is not False:
             errors.append("past-policy opponents are not integrated into this rollout")
+        reset_spacing = _select(config, "env.reset.longitudinal_spacing")
+        safe_distance_max = _select(
+            config,
+            "npc.longitudinal_controller.safe_following_distance.max",
+        )
+        vehicle_length = _select(config, "vehicle.vehicle.length")
+        if (
+            _is_finite_number(reset_spacing)
+            and _is_finite_number(safe_distance_max)
+            and _is_finite_number(vehicle_length)
+            and reset_spacing < safe_distance_max + vehicle_length
+        ):
+            errors.append(
+                "Step 2 reset spacing must be at least the maximum NPC "
+                "safe-following distance plus vehicle length"
+            )
     elif action_source == "fixed" and npc_action_values != (0.0, 0.0):
         errors.append("NPC action options cannot be used in a single-vehicle rollout")
 
@@ -459,7 +475,13 @@ def _run_rollout(
         initialize_npc_controller_state,
         npc_controller_step,
     )
-    from lidar_racing_rl.npc.pure_pursuit import pure_pursuit_actions
+    from lidar_racing_rl.npc.longitudinal_control import (
+        limit_speed_for_leading_vehicle,
+    )
+    from lidar_racing_rl.npc.pure_pursuit import (
+        ordered_braking_target_speeds,
+        pure_pursuit_actions,
+    )
     from lidar_racing_rl.npc.reference_line import (
         build_reference_waypoints,
         validate_centerline_clearance,
@@ -524,6 +546,17 @@ def _run_rollout(
     wheelbase = float(config.vehicle.vehicle.wheelbase)
     steering_min = float(config.vehicle.vehicle.min_steering_angle)
     steering_max = float(config.vehicle.vehicle.max_steering_angle)
+    ego_teacher_index = jnp.asarray([0], dtype=jnp.int32)
+    teacher_safe_distance = jnp.asarray(
+        [
+            float(
+                config.npc.longitudinal_controller.safe_following_distance.max
+            )
+            if settings.num_agents == 4
+            else 1.0
+        ],
+        dtype=jnp.float32,
+    )
 
     def select_ego_action(state: Any) -> Any:
         if action_source == "fixed":
@@ -543,6 +576,37 @@ def _run_rollout(
             acceleration_min=settings.min_acceleration,
             acceleration_max=settings.max_acceleration,
         )[0]
+        if settings.num_agents == 4:
+            waypoint_target_speed = ordered_braking_target_speeds(
+                state.simulator_state.cartesian_states[0:1],
+                waypoints[jnp.newaxis, ...],
+                teacher_speed_multiplier,
+                maximum_deceleration=abs(settings.min_acceleration),
+            )
+            safe_target_speed = limit_speed_for_leading_vehicle(
+                state.simulator_state.cartesian_states[0:1],
+                state.simulator_state.cartesian_states,
+                ego_teacher_index,
+                waypoint_target_speed,
+                teacher_safe_distance,
+                distance_gain=float(
+                    config.npc.longitudinal_controller.distance_gain
+                ),
+                lateral_gate=float(config.npc.longitudinal_controller.lateral_gate),
+                minimum_speed=0.0,
+            )
+            safe_acceleration = jnp.clip(
+                (
+                    safe_target_speed[0]
+                    - state.simulator_state.cartesian_states[0, 3]
+                )
+                / control_dt,
+                settings.min_acceleration,
+                settings.max_acceleration,
+            )
+            ego_physical_action = ego_physical_action.at[1].set(
+                safe_acceleration
+            )
         return normalize_physical_action(
             ego_physical_action,
             max_steering_angle=settings.max_steering_angle,
@@ -555,6 +619,10 @@ def _run_rollout(
         npc_count = settings.num_agents - 1
         npc_indices = jnp.arange(1, settings.num_agents, dtype=jnp.int32)
         npc_bounds = NpcRandomizationBounds.from_config(config.npc)
+        npc_bounds.validate_reset_spacing(
+            settings.reset_longitudinal_spacing,
+            settings.vehicle_length,
+        )
         validate_centerline_clearance(
             simulator,
             vehicle_width=settings.vehicle_width,
@@ -567,7 +635,7 @@ def _run_rollout(
         )
         distance_gain = float(config.npc.longitudinal_controller.distance_gain)
         lateral_gate = float(config.npc.longitudinal_controller.lateral_gate)
-        minimum_speed = float(config.vehicle.vehicle.min_velocity)
+        minimum_speed = 0.0
 
         def sample_parameters(sample_key: Any) -> Any:
             return sample_npc_episode_parameters(
@@ -668,7 +736,10 @@ def _run_rollout(
                     result.diagnostics.collision,
                     result.diagnostics.collision_with_opponent,
                     result.diagnostics.collision_with_wall,
+                    result.diagnostics.npc_collision_without_ego,
                     result.diagnostics.unsafe_contact,
+                    result.diagnostics.pass_count,
+                    result.diagnostics.minimum_npc_speed,
                     result.diagnostics.nearest_opponent_distance,
                     result.diagnostics.off_track,
                     result.diagnostics.race_complete,
@@ -719,7 +790,10 @@ def _run_rollout(
                 result.diagnostics.collision,
                 result.diagnostics.collision_with_opponent,
                 result.diagnostics.collision_with_wall,
+                result.diagnostics.npc_collision_without_ego,
                 result.diagnostics.unsafe_contact,
+                result.diagnostics.pass_count,
+                result.diagnostics.minimum_npc_speed,
                 result.diagnostics.nearest_opponent_distance,
                 result.diagnostics.off_track,
                 result.diagnostics.race_complete,
@@ -755,7 +829,10 @@ def _run_rollout(
         collisions,
         collisions_with_opponent,
         collisions_with_wall,
+        npc_collisions,
         unsafe_contacts,
+        pass_counts,
+        minimum_npc_speeds,
         nearest_opponent_distances,
         off_tracks,
         race_completes,
@@ -792,8 +869,15 @@ def _run_rollout(
     collision_with_wall_count = int(
         np.count_nonzero(np.asarray(collisions_with_wall))
     )
+    npc_collision_count = int(np.count_nonzero(np.asarray(npc_collisions)))
     unsafe_contact_count = int(
         np.count_nonzero(np.asarray(unsafe_contacts))
+    )
+    unique_pass_event_count = int(np.sum(np.asarray(pass_counts)))
+    minimum_observed_npc_speed = (
+        float(np.min(np.asarray(minimum_npc_speeds)))
+        if use_npc_controller
+        else None
     )
     off_track_count = int(np.count_nonzero(np.asarray(off_tracks)))
     race_complete_count = int(np.count_nonzero(np.asarray(race_completes)))
@@ -803,6 +887,7 @@ def _run_rollout(
             np.asarray(collisions)
             | np.asarray(off_tracks)
             | np.asarray(unrecoverables)
+            | np.asarray(npc_collisions)
         )
     )
     frenet_array = np.asarray(ego_frenet_poses, dtype=float)
@@ -854,8 +939,18 @@ def _run_rollout(
             {
                 "episode_randomization": True,
                 "gt_safe_following": True,
-                "control_delay": True,
+                "control_delay": npc_bounds.control_delay_steps[1] > 0,
+                "braking_event": npc_bounds.braking_probability > 0.0,
+                "lateral_offset_randomization": (
+                    npc_bounds.lateral_offset[0] != npc_bounds.lateral_offset[1]
+                ),
                 "resample_on_ego_auto_reset": True,
+                "speed_multiplier_range": list(npc_bounds.speed_multiplier),
+                "speed_resampled_each_episode": True,
+                "nearest_to_farthest_speed_order": "nondecreasing",
+                "reset_longitudinal_spacing_m": (
+                    settings.reset_longitudinal_spacing
+                ),
             }
             if use_npc_controller
             else None
@@ -895,6 +990,7 @@ def _run_rollout(
             "collision": collision_count,
             "collision_with_opponent": collision_with_opponent_count,
             "collision_with_wall": collision_with_wall_count,
+            "npc_collision_without_ego_step_count": npc_collision_count,
             "off_track": off_track_count,
             "race_complete": race_complete_count,
             "unrecoverable": unrecoverable_count,
@@ -902,6 +998,8 @@ def _run_rollout(
         },
         "interaction_diagnostics": {
             "unsafe_contact_count": unsafe_contact_count,
+            "unique_pass_event_count": unique_pass_event_count,
+            "minimum_observed_npc_speed": minimum_observed_npc_speed,
             "minimum_opponent_distance": (
                 float(np.min(np.asarray(nearest_opponent_distances)))
                 if settings.num_agents > 1
@@ -932,6 +1030,7 @@ def _run_rollout(
             {
                 "lookahead": lookahead,
                 "speed_multiplier": speed_multiplier,
+                "gt_safe_following": settings.num_agents == 4,
                 "waypoint_speed_minimum": waypoint_speed_range[0],
                 "waypoint_speed_maximum": waypoint_speed_range[1],
                 "maximum_lateral_acceleration": float(

@@ -175,6 +175,10 @@ def evaluate_lidar_policy(
         npc_count = 3
         npc_indices = jnp.arange(1, 4, dtype=jnp.int32)
         npc_bounds = NpcRandomizationBounds.from_config(_value(config, "npc"))
+        npc_bounds.validate_reset_spacing(
+            settings.reset_longitudinal_spacing,
+            settings.vehicle_length,
+        )
         validate_centerline_clearance(
             simulator,
             vehicle_width=float(_value(vehicle, "width")),
@@ -224,7 +228,8 @@ def evaluate_lidar_policy(
                 lateral_gate=float(
                     _value(npc_config, "longitudinal_controller", "lateral_gate")
                 ),
-                minimum_speed=float(_value(vehicle, "min_velocity")),
+                # Scripted traffic must stop rather than reverse when blocked.
+                minimum_speed=0.0,
             )
 
         npc_action_function = jax.jit(jax.vmap(npc_one))
@@ -316,6 +321,7 @@ def evaluate_lidar_policy(
             pass_count=diagnostics.pass_count,
             collision_with_opponent=diagnostics.collision_with_opponent,
             collision_with_wall=diagnostics.collision_with_wall,
+            npc_collision_without_ego=diagnostics.npc_collision_without_ego,
             unsafe_contact=diagnostics.unsafe_contact,
             following_vehicle=diagnostics.following_vehicle,
             stalled_behind_vehicle=diagnostics.stalled_behind_vehicle,

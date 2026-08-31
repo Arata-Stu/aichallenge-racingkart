@@ -324,6 +324,7 @@ class LidarRacingState:
     scan_corruption_state: ScanCorruptionState
     overtaking_state: OvertakingState
     previous_ego_action: jax.Array
+    npc_scenario_valid: jax.Array
 
 
 class StepDiagnostics(NamedTuple):
@@ -345,6 +346,8 @@ class StepDiagnostics(NamedTuple):
     opponent_present: jax.Array
     collision_with_opponent: jax.Array
     collision_with_wall: jax.Array
+    npc_collision_without_ego: jax.Array
+    minimum_npc_speed: jax.Array
     terminal_ego_pose: jax.Array
     terminal_ego_frenet_pose: jax.Array
 
@@ -506,6 +509,7 @@ class LidarRacingEnv:
             scan_corruption_state=corruption_state,
             overtaking_state=overtaking_state,
             previous_ego_action=jnp.zeros((2,), dtype=jnp.float32),
+            npc_scenario_valid=jnp.asarray(True),
         )
         return state, history[EGO_INDEX]
 
@@ -568,6 +572,12 @@ class LidarRacingEnv:
 
         # Simulator GT is permitted only for reward and episode semantics.
         ego_collision = simulator_state.collisions[EGO_INDEX]
+        npc_collision_without_ego = (
+            jnp.any(simulator_state.collisions[1:]) & ~ego_collision
+        )
+        npc_scenario_valid = (
+            state.npc_scenario_valid & ~npc_collision_without_ego
+        )
         race_complete = (
             simulator_state.num_laps[EGO_INDEX] >= self.settings.max_num_laps
         )
@@ -669,6 +679,15 @@ class LidarRacingEnv:
             nearest_distance,
             jnp.asarray(0.0, dtype=nearest_distance.dtype),
         )
+        if has_opponents:
+            minimum_npc_speed = jnp.min(
+                simulator_state.cartesian_states[1:, 3]
+            )
+        else:
+            minimum_npc_speed = jnp.asarray(
+                0.0,
+                dtype=nearest_distance.dtype,
+            )
         ego_speed = simulator_state.cartesian_states[EGO_INDEX, 3]
         stalled_behind_vehicle = (
             opponent_present
@@ -676,6 +695,14 @@ class LidarRacingEnv:
             & (nearest_forward_gap <= self.settings.stalled_max_forward_gap)
             & (jnp.abs(ego_speed) <= self.settings.stalled_speed_threshold)
         )
+        rewardable_pass_events = pass_events & npc_scenario_valid
+        reward_relative_progress = jnp.where(
+            npc_scenario_valid,
+            relative_progress,
+            0.0,
+        )
+        reward_unsafe_contact = unsafe_contact & npc_scenario_valid
+        reward_stalled = stalled_behind_vehicle & npc_scenario_valid
         reward = step1_reward(
             state.simulator_state.frenet_states[EGO_INDEX, 0],
             simulator_state.frenet_states[EGO_INDEX, 0],
@@ -693,10 +720,10 @@ class LidarRacingEnv:
         )
         reward = step2_reward(
             reward,
-            relative_progress=relative_progress,
-            pass_events=pass_events,
-            unsafe_contact=unsafe_contact,
-            stalled_behind_vehicle=stalled_behind_vehicle,
+            relative_progress=reward_relative_progress,
+            pass_events=rewardable_pass_events,
+            unsafe_contact=reward_unsafe_contact,
+            stalled_behind_vehicle=reward_stalled,
             relative_progress_weight=(
                 self.settings.relative_progress_weight
                 if self.settings.relative_progress_enabled
@@ -723,6 +750,7 @@ class LidarRacingEnv:
             scan_corruption_state=corruption_state,
             overtaking_state=overtaking_state,
             previous_ego_action=ego_normalized_action,
+            npc_scenario_valid=npc_scenario_valid,
         )
         reset_state, reset_observation = self._reset_one(reset_key)
         done = terminated | truncated
@@ -752,7 +780,7 @@ class LidarRacingEnv:
                 race_complete=race_complete,
                 unrecoverable=unrecoverable,
                 relative_progress=relative_progress,
-                pass_count=jnp.sum(pass_events.astype(jnp.int32)),
+                pass_count=jnp.sum(rewardable_pass_events.astype(jnp.int32)),
                 unsafe_contact=unsafe_contact,
                 stalled_behind_vehicle=stalled_behind_vehicle,
                 nearest_opponent_distance=nearest_opponent_distance,
@@ -761,6 +789,8 @@ class LidarRacingEnv:
                 opponent_present=opponent_present,
                 collision_with_opponent=collision_with_opponent,
                 collision_with_wall=collision_with_wall,
+                npc_collision_without_ego=npc_collision_without_ego,
+                minimum_npc_speed=minimum_npc_speed,
                 terminal_ego_pose=simulator_state.cartesian_states[
                     EGO_INDEX, jnp.asarray([0, 1, 4])
                 ],

@@ -76,7 +76,13 @@ def train_lidar_sac(
         initialize_npc_controller_state,
         npc_controller_step,
     )
-    from lidar_racing_rl.npc.pure_pursuit import pure_pursuit_actions
+    from lidar_racing_rl.npc.longitudinal_control import (
+        limit_speed_for_leading_vehicle,
+    )
+    from lidar_racing_rl.npc.pure_pursuit import (
+        ordered_braking_target_speeds,
+        pure_pursuit_actions,
+    )
     from lidar_racing_rl.npc.randomization import (
         NpcRandomizationBounds,
         sample_npc_episode_parameters,
@@ -341,6 +347,42 @@ def train_lidar_sac(
     teacher_speed = jnp.asarray(
         [float(_value(teacher_config, "speed_multiplier"))], dtype=jnp.float32
     )
+    teacher_vehicle_index = jnp.asarray([0], dtype=jnp.int32)
+    if num_agents == 4:
+        teacher_safe_distance = jnp.asarray(
+            [
+                float(
+                    _value(
+                        config,
+                        "npc",
+                        "longitudinal_controller",
+                        "safe_following_distance",
+                        "max",
+                    )
+                )
+            ],
+            dtype=jnp.float32,
+        )
+        teacher_distance_gain = float(
+            _value(
+                config,
+                "npc",
+                "longitudinal_controller",
+                "distance_gain",
+            )
+        )
+        teacher_lateral_gate = float(
+            _value(
+                config,
+                "npc",
+                "longitudinal_controller",
+                "lateral_gate",
+            )
+        )
+    else:
+        teacher_safe_distance = jnp.asarray([1.0], dtype=jnp.float32)
+        teacher_distance_gain = 0.0
+        teacher_lateral_gate = 1.0
     teacher_noise_std = _finite_float(
         _value(teacher_config, "normalized_action_noise_std"),
         "teacher.normalized_action_noise_std",
@@ -372,6 +414,29 @@ def train_lidar_sac(
             acceleration_min=settings.min_acceleration,
             acceleration_max=settings.max_acceleration,
         )[0]
+        if num_agents == 4:
+            waypoint_target_speed = ordered_braking_target_speeds(
+                cartesian_states[0:1],
+                waypoints[jnp.newaxis, ...],
+                teacher_speed,
+                maximum_deceleration=abs(settings.min_acceleration),
+            )
+            safe_target_speed = limit_speed_for_leading_vehicle(
+                cartesian_states[0:1],
+                cartesian_states,
+                teacher_vehicle_index,
+                waypoint_target_speed,
+                teacher_safe_distance,
+                distance_gain=teacher_distance_gain,
+                lateral_gate=teacher_lateral_gate,
+                minimum_speed=0.0,
+            )
+            safe_acceleration = jnp.clip(
+                (safe_target_speed[0] - cartesian_states[0, 3]) / control_dt,
+                settings.min_acceleration,
+                settings.max_acceleration,
+            )
+            physical_action = physical_action.at[1].set(safe_acceleration)
         return normalize_physical_action(
             physical_action,
             max_steering_angle=settings.max_steering_angle,
@@ -392,6 +457,10 @@ def train_lidar_sac(
         npc_count = 3
         npc_indices = jnp.arange(1, 4, dtype=jnp.int32)
         npc_bounds = NpcRandomizationBounds.from_config(_value(config, "npc"))
+        npc_bounds.validate_reset_spacing(
+            settings.reset_longitudinal_spacing,
+            settings.vehicle_length,
+        )
         validate_centerline_clearance(
             simulator,
             vehicle_width=float(_value(vehicle, "width")),
@@ -437,7 +506,8 @@ def train_lidar_sac(
                 lateral_gate=float(
                     _value(npc_config, "longitudinal_controller", "lateral_gate")
                 ),
-                minimum_speed=float(_value(vehicle, "min_velocity")),
+                # Scripted traffic must stop rather than reverse when blocked.
+                minimum_speed=0.0,
             )
 
         npc_action_function = jax.jit(jax.vmap(npc_one))
@@ -489,6 +559,9 @@ def train_lidar_sac(
     collision_window = jnp.asarray(0, dtype=jnp.int32)
     off_track_window = jnp.asarray(0, dtype=jnp.int32)
     race_complete_window = jnp.asarray(0, dtype=jnp.int32)
+    unique_pass_window = jnp.asarray(0, dtype=jnp.int32)
+    unsafe_contact_window = jnp.asarray(0, dtype=jnp.int32)
+    npc_invalid_window = jnp.asarray(0, dtype=jnp.int32)
     terminated_window = jnp.asarray(0, dtype=jnp.int32)
     truncated_window = jnp.asarray(0, dtype=jnp.int32)
     window_transitions = 0
@@ -573,6 +646,15 @@ def train_lidar_sac(
         race_complete_window = race_complete_window + jnp.sum(
             result.diagnostics.race_complete
         )
+        unique_pass_window = unique_pass_window + jnp.sum(
+            result.diagnostics.pass_count
+        )
+        unsafe_contact_window = unsafe_contact_window + jnp.sum(
+            result.diagnostics.unsafe_contact
+        )
+        npc_invalid_window = npc_invalid_window + jnp.sum(
+            result.diagnostics.npc_collision_without_ego
+        )
         terminated_window = terminated_window + jnp.sum(result.terminated)
         truncated_window = truncated_window + jnp.sum(result.truncated)
         window_transitions += num_envs
@@ -615,6 +697,9 @@ def train_lidar_sac(
             collisions = int(jax.device_get(collision_window))
             off_tracks = int(jax.device_get(off_track_window))
             race_completions = int(jax.device_get(race_complete_window))
+            unique_passes = int(jax.device_get(unique_pass_window))
+            unsafe_contacts = int(jax.device_get(unsafe_contact_window))
+            npc_collision_steps = int(jax.device_get(npc_invalid_window))
             terminations = int(jax.device_get(terminated_window))
             truncations = int(jax.device_get(truncated_window))
             completed_episodes = terminations + truncations
@@ -644,6 +729,9 @@ def train_lidar_sac(
                 "collision_count": collisions,
                 "off_track_count": off_tracks,
                 "race_complete_count": race_completions,
+                "unique_pass_count": unique_passes,
+                "unsafe_contact_step_count": unsafe_contacts,
+                "npc_collision_without_ego_step_count": npc_collision_steps,
                 "collision_rate_per_completed_episode": (
                     collisions / completed_episodes if completed_episodes else 0.0
                 ),
@@ -654,6 +742,9 @@ def train_lidar_sac(
                     race_completions / completed_episodes
                     if completed_episodes
                     else 0.0
+                ),
+                "unique_passes_per_transition": (
+                    unique_passes / window_transitions
                 ),
                 "terminated_count": terminations,
                 "truncated_count": truncations,
@@ -687,6 +778,9 @@ def train_lidar_sac(
             collision_window = jnp.asarray(0, dtype=jnp.int32)
             off_track_window = jnp.asarray(0, dtype=jnp.int32)
             race_complete_window = jnp.asarray(0, dtype=jnp.int32)
+            unique_pass_window = jnp.asarray(0, dtype=jnp.int32)
+            unsafe_contact_window = jnp.asarray(0, dtype=jnp.int32)
+            npc_invalid_window = jnp.asarray(0, dtype=jnp.int32)
             terminated_window = jnp.asarray(0, dtype=jnp.int32)
             truncated_window = jnp.asarray(0, dtype=jnp.int32)
             window_transitions = 0

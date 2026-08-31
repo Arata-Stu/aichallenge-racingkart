@@ -18,15 +18,21 @@ longitudinal_controller:
 
 randomization:
   waypoint_line: true
-  speed_multiplier: {min: 0.65, max: 1.05}
-  # Keep bounded line diversity within the bundled Spielberg centerline.
-  lateral_offset: {min: -0.2, max: 0.2}
+  # Re-sampled independently every episode, then ordered from the nearest
+  # (slowest) NPC to the farthest (fastest) NPC.  Straight targets are
+  # therefore 3.52--4.24 m/s. Against the demonstrated ~5 m/s Step-1 Ego, the
+  # 12/24/36 m starting gaps remain catchable within one Spielberg lap.
+  speed_multiplier: {min: 0.44, max: 0.53}
+  # Keep the introductory traffic on centerline; add line diversity later.
+  lateral_offset: {min: 0.0, max: 0.0}
   lookahead: {min: 1.5, max: 4.0}
   steering_gain: {min: 0.9, max: 1.1}
-  control_delay_steps: {min: 0, max: 2}
+  control_delay_steps: {min: 0, max: 0}
   acceleration_gain: {min: 0.8, max: 1.2}
   braking_event:
-    probability: 0.15
+    # Disabled for the introductory phase. Later curriculum phases may lower
+    # a non-negative target speed, but must never force an NPC into reverse.
+    probability: 0.0
     start_step: {min: 100, max: 1200}
     duration_steps: {min: 10, max: 60}
     acceleration: -2.0

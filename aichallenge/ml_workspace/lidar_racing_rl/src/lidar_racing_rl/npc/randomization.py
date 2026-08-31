@@ -118,6 +118,24 @@ class NpcRandomizationBounds:
         ):
             raise ValueError("braking acceleration must be negative")
 
+    def validate_reset_spacing(
+        self,
+        longitudinal_spacing: float,
+        vehicle_length: float,
+    ) -> None:
+        """Require reset headway beyond the largest sampled safe distance."""
+
+        if (
+            not math.isfinite(longitudinal_spacing)
+            or not math.isfinite(vehicle_length)
+            or vehicle_length <= 0.0
+            or longitudinal_spacing < self.safe_distance[1] + vehicle_length
+        ):
+            raise ValueError(
+                "Step 2 reset spacing must be at least the maximum NPC "
+                "safe-following distance plus vehicle length"
+            )
+
 
 @struct.dataclass
 class NpcEpisodeParameters:
@@ -174,7 +192,11 @@ def sample_npc_episode_parameters(
         maxval=bounds.braking_duration_steps[1] + 1,
     )
     return NpcEpisodeParameters(
-        speed_multiplier=uniform(keys[0], bounds.speed_multiplier),
+        # Reset placement is Ego, nearest NPC, ..., farthest NPC.  Sorting the
+        # independently sampled speeds in the same order keeps a rear NPC from
+        # immediately catching the vehicle ahead while retaining episode-level
+        # diversity in every sampled value.
+        speed_multiplier=jnp.sort(uniform(keys[0], bounds.speed_multiplier)),
         lateral_offset=uniform(keys[1], bounds.lateral_offset),
         lookahead=uniform(keys[2], bounds.lookahead),
         steering_gain=uniform(keys[3], bounds.steering_gain),

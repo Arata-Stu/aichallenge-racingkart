@@ -58,6 +58,21 @@ def test_pass_requires_behind_then_sustained_ahead_and_cooldown() -> None:
     )
     assert not bool(duplicate[0])
 
+    # Falling behind after cooldown may re-arm the hysteresis state, but a
+    # second pass of the same opponent must never produce another reward event.
+    for ego_s in (2.0, 2.0, 5.0, 6.0):
+        state, repeated, _ = update_overtaking_state(
+            state,
+            jnp.asarray(ego_s),
+            jnp.asarray([4.0]),
+            jnp.asarray(100.0),
+            behind_distance=0.5,
+            ahead_distance=1.0,
+            hold_steps=2,
+            cooldown_steps=3,
+        )
+        assert not bool(repeated[0])
+
 
 def test_closed_track_relative_progress_uses_nearest_forward_opponent() -> None:
     relative, gap = nearest_opponent_relative_progress(
@@ -69,6 +84,31 @@ def test_closed_track_relative_progress_uses_nearest_forward_opponent() -> None:
     )
     np.testing.assert_allclose(relative, 1.0)
     np.testing.assert_allclose(gap, 2.0)
+
+
+def test_opponent_lapping_ego_never_emits_an_ego_pass() -> None:
+    state = initialize_overtaking_state(
+        jnp.asarray(0.0),
+        jnp.asarray([4.0]),
+        jnp.asarray(100.0),
+        behind_distance=0.5,
+    )
+
+    for opponent_s in (20.0, 40.0, 60.0, 80.0, 0.0, 20.0):
+        state, pass_event, gap = update_overtaking_state(
+            state,
+            jnp.asarray(0.0),
+            jnp.asarray([opponent_s]),
+            jnp.asarray(100.0),
+            behind_distance=0.5,
+            ahead_distance=1.0,
+            hold_steps=2,
+            cooldown_steps=3,
+        )
+        assert not bool(pass_event[0])
+        assert float(gap[0]) < 0.0
+
+    assert not bool(state.passed_once[0])
 
 
 def test_helpers_are_jittable_and_handle_no_opponents() -> None:

@@ -34,6 +34,7 @@ def _step(
         "pass_count": jnp.zeros((num_envs,), dtype=jnp.int32),
         "collision_with_opponent": false,
         "collision_with_wall": false,
+        "npc_collision_without_ego": false,
         "unsafe_contact": false,
         "following_vehicle": false,
         "stalled_behind_vehicle": false,
@@ -64,6 +65,7 @@ def test_completed_episode_metrics_and_partial_episode_are_separate() -> None:
     assert float(summary["race_completion_rate"]) == 1.0
     assert float(summary["mean_return"]) == 2.0
     assert float(summary["overtake_success_rate"]) == 0.0
+    assert float(summary["all_opponents_overtaken_rate"]) == 0.0
     assert float(summary["minimum_opponent_distance_mean"]) == 0.0
     assert float(state.episode_return[0]) == 0.0
     assert float(state.episode_return[1]) == 3.0
@@ -86,6 +88,7 @@ def test_collision_and_time_limit_rates() -> None:
         speed=jnp.ones((2,)),
         collision=jnp.asarray([True, False]),
         collision_with_wall=jnp.asarray([True, False]),
+        npc_collision_without_ego=jnp.asarray([False, True]),
         opponent_present=jnp.asarray([True, True]),
         nearest_opponent_distance=jnp.asarray([5.0, 6.0]),
         terminated=jnp.asarray([True, False]),
@@ -96,6 +99,7 @@ def test_collision_and_time_limit_rates() -> None:
     assert int(summary["episodes"]) == 2
     assert float(summary["collision_rate"]) == 0.5
     assert float(summary["wall_collision_rate"]) == 0.5
+    assert float(summary["npc_collision_without_ego_rate"]) == 0.5
     assert float(summary["truncation_rate"]) == 0.5
 
 
@@ -135,3 +139,20 @@ def test_overtaking_following_and_recontact_metrics() -> None:
     assert float(summary["mean_final_rank"]) == 1.0
     assert float(summary["post_pass_recontact_rate"]) == 1.0
     assert float(summary["safe_wait_success_rate"]) == 0.5
+
+
+def test_all_opponents_requires_three_clean_unique_passes() -> None:
+    state = initialize_evaluation_accumulator(2)
+    state = _step(
+        state,
+        pass_count=jnp.asarray([3, 3], dtype=jnp.int32),
+        race_complete=jnp.asarray([True, False]),
+        collision=jnp.asarray([False, True]),
+        collision_with_opponent=jnp.asarray([False, True]),
+        opponent_present=jnp.asarray([True, True]),
+        terminated=jnp.asarray([True, True]),
+    )
+    summary = evaluation_summary(state)
+
+    assert float(summary["overtake_success_rate"]) == 1.0
+    assert float(summary["all_opponents_overtaken_rate"]) == 0.5

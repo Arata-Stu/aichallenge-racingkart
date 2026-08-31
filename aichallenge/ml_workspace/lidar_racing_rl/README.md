@@ -140,9 +140,15 @@ docker compose run --rm --no-deps lidar-rl \
 
 SVGにはcenterlineの順序、左右境界、episodeごとに分割した走行軌跡、collisionとoff-track地点を描画します。JAXを初期化せず設定だけを検証するには末尾へ`--dry-run`を追加します。固定actionのAPI smokeが必要な場合だけ`--action-source fixed`と`--ego-*` / `--npc-*`を指定します。
 
+Step 2の導入シナリオでは、Egoの前方12 / 24 / 36 mへ3台のNPCを順番に配置します。開始anchorはepisodeごとにコース全周から一様に選ぶため、遭遇区間は固定されません。NPC速度倍率もepisodeごとに独立抽選した後、近いNPCから遠いNPCへ非減少順に並べます。これにより後方NPCの追突を抑えつつ、直線目標3.52〜4.24 m/sの3台を1周内に追い越す機会を作ります。導入段階ではNPCの制動イベント・制御遅延・横offsetを無効にし、通常の追従や停止待機に明示的なstalled penaltyを与えません。これらは基本追越しの成立後にcurriculumで段階的に追加します。
+
+Step 2のReplay warmupでは、GTをActor観測へ渡さず、教師側だけで前走車との安全距離を制御します。教師は無理に追い越さず安全な追従例を蓄積し、その後のLiDAR-only SACが進行・初回pass報酬と危険接近・衝突ペナルティから「待つ／抜く」を暗黙に選択します。
+
+追越し報酬は各NPCの最初のpassだけが対象です。同一NPCを抜き直して報酬を反復取得することはできません。追越し中の近接は毎stepのunsafe-contact項、実接触はterminal collisionとして別々に罰します。評価では1台以上を抜いた`overtake_success_rate`に加えて、3台すべてを抜き、接触・off-trackなしで1周を終えた`all_opponents_overtaken_rate`を記録します。Egoと無関係なNPC衝突は診断件数として記録し、発生後のrelative-progress・pass・unsafe/stalled相手報酬をmaskして停止車両から報酬を得られないようにします。
+
 ## 64環境benchmark
 
-既定値はblueprintの`num_envs=64`、`num_agents=4`、`num_beams=360`、`steps=1000`です。JAXの環境・beam軸にPython逐次loopを置かず、compile時間、rollout時間、環境・車両step/s、peak memoryをJSONへ出します。Ego actionは固定zero、NPC 3台はエピソード単位で多様化したPure Pursuit・GT安全車間制御・制動イベント・制御遅延を使用し、Egoのauto-reset環境だけNPC状態も再初期化します。
+既定値はblueprintの`num_envs=64`、`num_agents=4`、`num_beams=360`、`steps=1000`です。JAXの環境・beam軸にPython逐次loopを置かず、compile時間、rollout時間、環境・車両step/s、peak memoryをJSONへ出します。Ego actionは固定zero、NPC 3台はepisode単位で多様化したPure PursuitとGT安全車間制御を使用し、Egoのauto-reset環境だけNPC状態も再初期化します。制動イベント・制御遅延・横offsetは現在の導入設定では無効です。
 
 ```bash
 # CPU
@@ -308,7 +314,7 @@ CONTROL_METHOD=lidar_racing make eval
 ## 設定と生成物
 
 - `configs/train/step1_single_vehicle.yaml`: 単車両LiDAR-only学習
-- `configs/train/step2_four_vehicle.yaml`: Ego 1台とPure Pursuit NPC 3台。4台はコース順に8 m間隔で配置し、episode終了時は全車をまとめて再配置します
+- `configs/train/step2_four_vehicle.yaml`: Ego 1台とPure Pursuit NPC 3台。4台はコース順に12 m間隔で配置し、episode終了時は全車をまとめて再配置します
 - `configs/env/`: canonical scan、動的車両LiDAR、将来のdomain randomization契約
 - `configs/vehicle/f1tenth_nominal.yaml`: Spielberg初期学習用の既定F1TENTH車両
 - `configs/vehicle/aichallenge_kart.yaml`: 車両寸法とAWSIM同定値

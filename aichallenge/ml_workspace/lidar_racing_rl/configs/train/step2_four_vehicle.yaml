@@ -26,10 +26,10 @@ env:
   num_envs: 64
   num_agents: 4
   reset:
-    # Place Ego/NPC1/NPC2/NPC3 in track order.  Eight metres is greater than
-    # the NPC safe-following maximum (6 m) plus the 0.58 m vehicle length, so
-    # a full-environment restart cannot begin with overlapping vehicles.
-    longitudinal_spacing: 8.0
+    # Place Ego/NPC1/NPC2/NPC3 at 0/12/24/36 m in track order.  This leaves
+    # twice the maximum safe-following distance between vehicles and spreads
+    # the three encounters over more of the 343 m Spielberg lap.
+    longitudinal_spacing: 12.0
 
 training:
   ego_agent_index: 0
@@ -51,7 +51,9 @@ teacher:
     type: curvature_limited
     minimum_corner_speed: 3.0
     maximum_lateral_acceleration: 3.0
-  normalized_action_noise_std: 0.1
+  # Warmup teacher follows a leading vehicle through GT-only safety control;
+  # keep exploration small until the learned LiDAR policy takes over.
+  normalized_action_noise_std: 0.05
 
 curriculum:
   # configs/curriculum/step2.yaml defines and validates 2a--2e offline, but the
@@ -68,26 +70,31 @@ reward:
   offtrack: true
   smoothness: true
   reverse: true
-  stalled_behind_vehicle: true
+  # Moving or stopped following is allowed in the introductory scenario.
+  stalled_behind_vehicle: false
   trajectory_aided:
     enabled: false
     weight: 0.0
   weights:
     progress: 1.0
     relative_progress: 0.5
-    pass: 5.0
-    collision: 10.0
-    unsafe_contact: 2.0
-    off_track: 10.0
+    # Three first passes can add at most 90 reward versus roughly 343 m of
+    # one-lap progress. Failure penalties retain the stable Step-1 scale.
+    pass: 30.0
+    collision: 50.0
+    unsafe_contact: 0.25
+    off_track: 100.0
     smoothness: 0.05
     reverse: 1.0
-    stalled_behind: 0.1
+    stalled_behind: 0.0
   overtaking:
     behind_distance: 0.5
     ahead_distance: 1.0
-    hold_steps: 5
+    hold_steps: 10
     cooldown_steps: 100
-    unsafe_contact_distance: 2.25
+    # Temporary low-weight center-distance proxy for the 0.58 x 0.31 m car.
+    # Replace with oriented-body clearance/TTC before AWSIM transfer.
+    unsafe_contact_distance: 0.75
     stalled_max_forward_gap: 8.0
     stalled_speed_threshold: 0.25
 
