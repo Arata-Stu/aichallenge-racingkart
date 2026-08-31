@@ -40,4 +40,25 @@ def normalize_physical_action(
     return jnp.clip(jnp.stack((steering, acceleration), axis=-1), -1.0, 1.0)
 
 
-__all__ = ["normalize_physical_action", "scale_normalized_action"]
+def clamp_nonreversing_acceleration(
+    physical_action: jax.Array,
+    speed: jax.Array,
+    *,
+    control_dt: float,
+) -> jax.Array:
+    """Prevent a braking command from carrying a vehicle through zero speed."""
+
+    if physical_action.shape[-1] != 2:
+        raise ValueError("physical_action must end with [steering, acceleration]")
+    if control_dt <= 0.0:
+        raise ValueError("control_dt must be positive")
+    minimum_acceleration = -jnp.maximum(speed, 0.0) / control_dt
+    acceleration = jnp.maximum(physical_action[..., 1], minimum_acceleration)
+    return physical_action.at[..., 1].set(acceleration)
+
+
+__all__ = [
+    "clamp_nonreversing_acceleration",
+    "normalize_physical_action",
+    "scale_normalized_action",
+]

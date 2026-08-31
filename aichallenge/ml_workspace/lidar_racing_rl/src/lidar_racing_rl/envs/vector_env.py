@@ -22,7 +22,10 @@ import jax
 import jax.numpy as jnp
 from flax import struct
 
-from lidar_racing_rl.envs.action import scale_normalized_action
+from lidar_racing_rl.envs.action import (
+    clamp_nonreversing_acceleration,
+    scale_normalized_action,
+)
 from lidar_racing_rl.envs.observation import (
     CANONICAL_BEAM_COUNT,
     canonicalize_scan,
@@ -99,6 +102,8 @@ class RacingEnvSettings:
     max_steering_angle: float
     min_acceleration: float
     max_acceleration: float
+    max_velocity: float
+    control_dt: float
     max_steps: int
     max_num_laps: int
     reset_longitudinal_spacing: float
@@ -135,6 +140,7 @@ class RacingEnvSettings:
         """Build settings from resolved mapping objects without hidden defaults."""
 
         lidar = _required(env_config, "lidar")
+        simulator = _required(env_config, "simulator")
         episode = _required(env_config, "episode")
         reset = _required(env_config, "reset")
         vehicle = vehicle_config.get("vehicle", vehicle_config)
@@ -152,6 +158,11 @@ class RacingEnvSettings:
             max_steering_angle=float(_required(vehicle, "max_steering_angle")),
             min_acceleration=float(_required(vehicle, "min_acceleration")),
             max_acceleration=float(_required(vehicle, "max_acceleration")),
+            max_velocity=float(_required(vehicle, "max_velocity")),
+            control_dt=(
+                float(_required(simulator, "physics_timestep"))
+                * _required_int(simulator, "timestep_ratio")
+            ),
             max_steps=_required_int(episode, "max_steps"),
             max_num_laps=_required_int(episode, "max_num_laps"),
             reset_longitudinal_spacing=float(_required(reset, "longitudinal_spacing")),
@@ -206,6 +217,8 @@ class RacingEnvSettings:
             self.max_steering_angle,
             self.min_acceleration,
             self.max_acceleration,
+            self.max_velocity,
+            self.control_dt,
             self.reset_longitudinal_spacing,
             self.reset_lateral_jitter,
             self.reset_heading_jitter,
@@ -254,6 +267,8 @@ class RacingEnvSettings:
             raise ValueError("max_steering_angle must be positive")
         if self.min_acceleration >= self.max_acceleration:
             raise ValueError("acceleration bounds must be ordered")
+        if self.max_velocity <= 0.0 or self.control_dt <= 0.0:
+            raise ValueError("velocity limit and control_dt must be positive")
         if self.max_steps < 1 or self.max_num_laps < 1:
             raise ValueError("episode limits must be positive")
         if self.pass_hold_steps < 1 or self.pass_cooldown_steps < 0:
@@ -350,6 +365,7 @@ class StepDiagnostics(NamedTuple):
     npc_collision_flags: jax.Array
     npc_collision_without_ego: jax.Array
     minimum_npc_speed: jax.Array
+    npc_speeds: jax.Array
     terminal_ego_pose: jax.Array
     terminal_ego_frenet_pose: jax.Array
 
@@ -546,6 +562,11 @@ class LidarRacingEnv:
             min_acceleration=self.settings.min_acceleration,
             max_acceleration=self.settings.max_acceleration,
         )
+        ego_physical_action = clamp_nonreversing_acceleration(
+            ego_physical_action,
+            state.simulator_state.cartesian_states[EGO_INDEX, 3],
+            control_dt=self.settings.control_dt,
+        )
         physical_actions = jnp.concatenate(
             (ego_physical_action[jnp.newaxis, :], npc_physical_actions), axis=0
         )
@@ -603,8 +624,17 @@ class LidarRacingEnv:
             ego_frenet,
             clearance=lateral_clearance,
         )
-        unrecoverable = ~jnp.all(
-            jnp.isfinite(simulator_state.cartesian_states[EGO_INDEX])
+        ego_speed = simulator_state.cartesian_states[EGO_INDEX, 3]
+        velocity_tolerance = 1.0e-3 * jnp.maximum(
+            1.0, jnp.asarray(self.settings.max_velocity)
+        )
+        velocity_out_of_bounds = (
+            (ego_speed < -velocity_tolerance)
+            | (ego_speed > self.settings.max_velocity + velocity_tolerance)
+        )
+        unrecoverable = (
+            ~jnp.all(jnp.isfinite(simulator_state.cartesian_states[EGO_INDEX]))
+            | velocity_out_of_bounds
         )
         terminated, truncated = ego_done_flags(
             collision=ego_collision,
@@ -614,6 +644,11 @@ class LidarRacingEnv:
             step_count=simulator_state.step,
             max_steps=self.settings.max_steps,
         )
+        # An NPC-only collision invalidates the traffic scenario.  Terminate
+        # immediately so sticky collision state and a stationary wreck never
+        # enter subsequent replay transitions.
+        terminated = terminated | npc_collision_without_ego
+        truncated = truncated & ~terminated
         relative_progress, _ = nearest_opponent_relative_progress(
             state.simulator_state.frenet_states[EGO_INDEX, 0],
             simulator_state.frenet_states[EGO_INDEX, 0],
@@ -687,15 +722,14 @@ class LidarRacingEnv:
             jnp.asarray(0.0, dtype=nearest_distance.dtype),
         )
         if has_opponents:
-            minimum_npc_speed = jnp.min(
-                simulator_state.cartesian_states[1:, 3]
-            )
+            npc_speeds = simulator_state.cartesian_states[1:, 3]
+            minimum_npc_speed = jnp.min(npc_speeds)
         else:
+            npc_speeds = jnp.empty((0,), dtype=nearest_distance.dtype)
             minimum_npc_speed = jnp.asarray(
                 0.0,
                 dtype=nearest_distance.dtype,
             )
-        ego_speed = simulator_state.cartesian_states[EGO_INDEX, 3]
         stalled_behind_vehicle = (
             opponent_present
             & jnp.isfinite(nearest_forward_gap)
@@ -800,6 +834,7 @@ class LidarRacingEnv:
                 npc_collision_flags=npc_collision_flags,
                 npc_collision_without_ego=npc_collision_without_ego,
                 minimum_npc_speed=minimum_npc_speed,
+                npc_speeds=npc_speeds,
                 terminal_ego_pose=simulator_state.cartesian_states[
                     EGO_INDEX, jnp.asarray([0, 1, 4])
                 ],

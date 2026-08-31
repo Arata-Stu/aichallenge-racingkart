@@ -29,6 +29,7 @@ def _step(
         "normalized_action": jnp.zeros((num_envs, 2), dtype=jnp.float32),
         "collision": false,
         "off_track": false,
+        "unrecoverable": false,
         "race_complete": false,
         "relative_progress": zeros,
         "pass_count": jnp.zeros((num_envs,), dtype=jnp.int32),
@@ -79,6 +80,18 @@ def test_requested_episode_limit_selects_only_remaining_completions() -> None:
 
     assert selected.tolist() == [True, False, True, False]
     assert none_remaining.tolist() == [False, False, False, False]
+
+
+def test_unrecoverable_physical_state_is_reported_per_episode() -> None:
+    state = initialize_evaluation_accumulator(1)
+    state = _step(
+        state,
+        unrecoverable=jnp.asarray([True]),
+        terminated=jnp.asarray([True]),
+    )
+
+    summary = evaluation_summary(state)
+    assert float(summary["unrecoverable_state_rate"]) == 1.0
 
 
 def test_collision_and_time_limit_rates() -> None:

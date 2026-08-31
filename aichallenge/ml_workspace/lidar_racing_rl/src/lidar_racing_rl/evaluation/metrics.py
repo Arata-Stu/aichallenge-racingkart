@@ -27,6 +27,7 @@ class EvaluationAccumulator:
     acceleration_variation: jax.Array
     collision_seen: jax.Array
     off_track_seen: jax.Array
+    unrecoverable_seen: jax.Array
     relative_progress: jax.Array
     pass_count: jax.Array
     first_pass_step: jax.Array
@@ -46,6 +47,7 @@ class EvaluationAccumulator:
     completed_races: jax.Array
     collision_episodes: jax.Array
     off_track_episodes: jax.Array
+    unrecoverable_episodes: jax.Array
     truncated_episodes: jax.Array
     return_sum: jax.Array
     progress_sum: jax.Array
@@ -99,6 +101,7 @@ def initialize_evaluation_accumulator(
         acceleration_variation=zeros,
         collision_seen=false,
         off_track_seen=false,
+        unrecoverable_seen=false,
         relative_progress=zeros,
         pass_count=zero_ints,
         first_pass_step=zero_ints,
@@ -122,6 +125,7 @@ def initialize_evaluation_accumulator(
         completed_races=scalar_int,
         collision_episodes=scalar_int,
         off_track_episodes=scalar_int,
+        unrecoverable_episodes=scalar_int,
         truncated_episodes=scalar_int,
         return_sum=scalar_float,
         progress_sum=scalar_float,
@@ -182,6 +186,7 @@ def update_evaluation_accumulator(
     normalized_action: jax.Array,
     collision: jax.Array,
     off_track: jax.Array,
+    unrecoverable: jax.Array,
     race_complete: jax.Array,
     relative_progress: jax.Array,
     pass_count: jax.Array,
@@ -209,6 +214,7 @@ def update_evaluation_accumulator(
         ("speed", speed),
         ("collision", collision),
         ("off_track", off_track),
+        ("unrecoverable", unrecoverable),
         ("race_complete", race_complete),
         ("relative_progress", relative_progress),
         ("pass_count", pass_count),
@@ -236,6 +242,7 @@ def update_evaluation_accumulator(
     next_acceleration_variation = state.acceleration_variation + action_delta[:, 1]
     next_collision_seen = state.collision_seen | collision
     next_off_track_seen = state.off_track_seen | off_track
+    next_unrecoverable_seen = state.unrecoverable_seen | unrecoverable
     next_relative_progress = state.relative_progress + relative_progress
     next_pass_count = state.pass_count + pass_count.astype(jnp.int32)
     first_pass_now = (state.first_pass_step == 0) & (pass_count > 0)
@@ -309,6 +316,7 @@ def update_evaluation_accumulator(
         acceleration_variation=jnp.where(done, 0.0, next_acceleration_variation),
         collision_seen=jnp.where(done, False, next_collision_seen),
         off_track_seen=jnp.where(done, False, next_off_track_seen),
+        unrecoverable_seen=jnp.where(done, False, next_unrecoverable_seen),
         relative_progress=jnp.where(done, 0.0, next_relative_progress),
         pass_count=jnp.where(done, 0, next_pass_count),
         first_pass_step=jnp.where(done, 0, next_first_pass_step),
@@ -347,6 +355,10 @@ def update_evaluation_accumulator(
         ),
         off_track_episodes=(
             state.off_track_episodes + jnp.sum(done & next_off_track_seen)
+        ),
+        unrecoverable_episodes=(
+            state.unrecoverable_episodes
+            + jnp.sum(done & next_unrecoverable_seen)
         ),
         truncated_episodes=state.truncated_episodes + jnp.sum(done & truncated),
         return_sum=state.return_sum + jnp.sum(done_float * next_return),
@@ -456,6 +468,7 @@ def evaluation_summary(state: EvaluationAccumulator) -> dict[str, jax.Array]:
         "race_completion_rate": state.completed_races / episodes,
         "collision_rate": state.collision_episodes / episodes,
         "off_track_rate": state.off_track_episodes / episodes,
+        "unrecoverable_state_rate": state.unrecoverable_episodes / episodes,
         "truncation_rate": state.truncated_episodes / episodes,
         "mean_return": state.return_sum / episodes,
         "mean_progress": state.progress_sum / episodes,

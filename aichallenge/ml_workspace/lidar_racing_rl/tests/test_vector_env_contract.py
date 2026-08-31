@@ -107,7 +107,9 @@ class _FakeSimulator:
     ) -> _FakeArrayResult:
         del key
         ego_collision = actions[0, 0] > 0.5
+        npc_collision = actions[1, 0] > 0.5
         collisions = state.collisions.at[0].set(ego_collision)
+        collisions = collisions.at[1].set(npc_collision)
         progress = jnp.full((4,), 0.1, dtype=jnp.float32)
         frenet = state.frenet_states.at[:, 0].add(progress)
         frenet = frenet.at[0, 1].set(
@@ -202,6 +204,8 @@ def _valid_settings() -> RacingEnvSettings:
         max_steering_angle=0.64,
         min_acceleration=-3.2,
         max_acceleration=3.2,
+        max_velocity=20.0,
+        control_dt=0.05,
         max_steps=1800,
         max_num_laps=1,
         reset_longitudinal_spacing=4.0,
@@ -347,6 +351,7 @@ def test_vector_step_resets_only_environment_whose_ego_terminated() -> None:
     assert result.diagnostics.relative_progress.shape == (2,)
     assert result.diagnostics.pass_count.shape == (2,)
     assert result.diagnostics.minimum_npc_speed.shape == (2,)
+    assert result.diagnostics.npc_speeds.shape == (2, 3)
     assert not bool(result.diagnostics.unsafe_contact[1])
     assert bool(result.diagnostics.stalled_behind_vehicle[1])
     assert bool(result.diagnostics.opponent_present[1])
@@ -355,6 +360,25 @@ def test_vector_step_resets_only_environment_whose_ego_terminated() -> None:
     assert float(result.diagnostics.nearest_opponent_distance[1]) > 2.25
     assert int(result.state.simulator_state.step[0]) == 0
     assert int(result.state.simulator_state.step[1]) == 1
+
+
+def test_npc_only_collision_terminates_and_resets_invalid_scenario() -> None:
+    environment = LidarRacingEnv(_FakeSimulator(), _valid_settings())
+    state, _ = environment.reset(jax.random.key(21))
+    npc_actions = jnp.zeros((3, 2), dtype=jnp.float32).at[0, 0].set(1.0)
+
+    result = environment.step(
+        jax.random.key(22),
+        state,
+        jnp.zeros((2,), dtype=jnp.float32),
+        npc_actions,
+    )
+
+    assert bool(result.terminated)
+    assert not bool(result.truncated)
+    assert not bool(result.diagnostics.collision)
+    assert bool(result.diagnostics.npc_collision_without_ego)
+    assert int(result.state.simulator_state.step) == 0
 
 
 def test_collision_diagnostics_classify_current_opponent_obb_overlap() -> None:

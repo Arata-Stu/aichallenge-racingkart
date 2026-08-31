@@ -159,12 +159,16 @@ def evaluate_lidar_policy(
     trace_poses: list[tuple[float, float, float]] = []
     trace_npc_poses: list[tuple[tuple[float, float, float], ...]] = []
     trace_speeds: list[float] = []
+    trace_npc_speeds: list[tuple[float, ...]] = []
+    trace_nearest_opponent_distance: list[float] = []
     trace_actions: list[tuple[float, float]] = []
     trace_progress: list[float] = []
     trace_race_complete: list[bool] = []
     trace_collision: list[bool] = []
+    trace_npc_collision: list[bool] = []
     trace_off_track: list[bool] = []
     trace_truncated: list[bool] = []
+    trace_unrecoverable: list[bool] = []
     cumulative_trace_progress = 0.0
     trace_active = capture_trace
 
@@ -297,8 +301,12 @@ def evaluate_lidar_policy(
             cumulative_trace_progress += progress_delta
             race_complete = bool(jax.device_get(diagnostics.race_complete[0]))
             collision = bool(jax.device_get(diagnostics.collision[0]))
+            npc_collision = bool(
+                jax.device_get(diagnostics.npc_collision_without_ego[0])
+            )
             off_track = bool(jax.device_get(diagnostics.off_track[0]))
             truncated = bool(jax.device_get(result.truncated[0]))
+            unrecoverable = bool(jax.device_get(diagnostics.unrecoverable[0]))
             trace_poses.append((float(pose[0]), float(pose[1]), float(pose[4])))
             trace_npc_poses.append(
                 tuple(
@@ -307,12 +315,23 @@ def evaluate_lidar_policy(
                 )
             )
             trace_speeds.append(float(jax.device_get(diagnostics.ego_speed[0])))
+            trace_npc_speeds.append(
+                tuple(
+                    float(value)
+                    for value in jax.device_get(diagnostics.npc_speeds[0]).tolist()
+                )
+            )
+            trace_nearest_opponent_distance.append(
+                float(jax.device_get(diagnostics.nearest_opponent_distance[0]))
+            )
             trace_actions.append((float(action[0]), float(action[1])))
             trace_progress.append(cumulative_trace_progress)
             trace_race_complete.append(race_complete)
             trace_collision.append(collision)
+            trace_npc_collision.append(npc_collision)
             trace_off_track.append(off_track)
             trace_truncated.append(truncated)
+            trace_unrecoverable.append(unrecoverable)
             trace_active = not bool(jax.device_get(done[0]))
         remaining_episodes = (
             jnp.asarray(episodes, dtype=jnp.int32) - accumulator.completed_episodes
@@ -326,6 +345,7 @@ def evaluate_lidar_policy(
             normalized_action=ego_actions,
             collision=diagnostics.collision,
             off_track=diagnostics.off_track,
+            unrecoverable=diagnostics.unrecoverable,
             race_complete=diagnostics.race_complete,
             relative_progress=diagnostics.relative_progress,
             pass_count=diagnostics.pass_count,
@@ -402,12 +422,16 @@ def evaluate_lidar_policy(
             poses=tuple(trace_poses),
             npc_poses=tuple(trace_npc_poses),
             speeds=tuple(trace_speeds),
+            npc_speeds=tuple(trace_npc_speeds),
+            nearest_opponent_distance=tuple(trace_nearest_opponent_distance),
             actions=tuple(trace_actions),
             cumulative_progress=tuple(trace_progress),
             race_complete=tuple(trace_race_complete),
             collision=tuple(trace_collision),
+            npc_collision=tuple(trace_npc_collision),
             off_track=tuple(trace_off_track),
             truncated=tuple(trace_truncated),
+            unrecoverable=tuple(trace_unrecoverable),
             control_dt=control_dt,
             track_length=float(simulator.track_length),
             vehicle_length=float(_value(vehicle, "length")),

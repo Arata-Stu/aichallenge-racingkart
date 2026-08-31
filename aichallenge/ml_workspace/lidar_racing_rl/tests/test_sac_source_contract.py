@@ -52,6 +52,16 @@ class SACSourceContractTest(unittest.TestCase):
         self.assertNotIn("simulator_state.num_laps[EGO_INDEX]", vector_source)
         self.assertIn("next_progress >=", termination_source)
 
+    def test_environment_rejects_reverse_and_invalid_traffic_states(self) -> None:
+        vector_source = (ENV_ROOT / "vector_env.py").read_text(encoding="utf-8")
+        action_source = (ENV_ROOT / "action.py").read_text(encoding="utf-8")
+
+        self.assertIn("clamp_nonreversing_acceleration(", vector_source)
+        self.assertIn("ego_speed < -velocity_tolerance", vector_source)
+        self.assertIn("ego_speed > self.settings.max_velocity", vector_source)
+        self.assertIn("terminated = terminated | npc_collision_without_ego", vector_source)
+        self.assertIn("-jnp.maximum(speed, 0.0) / control_dt", action_source)
+
     def test_sac_initializer_keeps_metadata_tools_jax_free(self) -> None:
         tree = _tree("__init__.py")
         imports = [

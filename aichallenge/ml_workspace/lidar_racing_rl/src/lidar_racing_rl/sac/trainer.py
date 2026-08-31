@@ -663,6 +663,7 @@ def train_lidar_sac(
     progress_window = jnp.asarray(0.0, dtype=jnp.float32)
     collision_window = jnp.asarray(0, dtype=jnp.int32)
     off_track_window = jnp.asarray(0, dtype=jnp.int32)
+    unrecoverable_window = jnp.asarray(0, dtype=jnp.int32)
     race_complete_window = jnp.asarray(0, dtype=jnp.int32)
     unique_pass_window = jnp.asarray(0, dtype=jnp.int32)
     unsafe_contact_window = jnp.asarray(0, dtype=jnp.int32)
@@ -804,6 +805,9 @@ def train_lidar_sac(
         progress_window = progress_window + jnp.sum(result.diagnostics.progress_delta)
         collision_window = collision_window + jnp.sum(result.diagnostics.collision)
         off_track_window = off_track_window + jnp.sum(result.diagnostics.off_track)
+        unrecoverable_window = unrecoverable_window + jnp.sum(
+            result.diagnostics.unrecoverable
+        )
         race_complete_window = race_complete_window + jnp.sum(
             result.diagnostics.race_complete
         )
@@ -857,6 +861,7 @@ def train_lidar_sac(
             progress = float(jax.device_get(progress_window))
             collisions = int(jax.device_get(collision_window))
             off_tracks = int(jax.device_get(off_track_window))
+            unrecoverable_states = int(jax.device_get(unrecoverable_window))
             race_completions = int(jax.device_get(race_complete_window))
             unique_passes = int(jax.device_get(unique_pass_window))
             unsafe_contacts = int(jax.device_get(unsafe_contact_window))
@@ -906,10 +911,12 @@ def train_lidar_sac(
                 ),
                 "collision_count": collisions,
                 "off_track_count": off_tracks,
+                "unrecoverable_state_count": unrecoverable_states,
                 "race_complete_count": race_completions,
                 "unique_pass_count": unique_passes,
                 "unsafe_contact_step_count": unsafe_contacts,
                 "npc_collision_without_ego_step_count": npc_collision_steps,
+                "npc_collision_without_ego_count": npc_collision_steps,
                 "collision_rate_per_completed_episode": (
                     collisions / completed_episodes if completed_episodes else 0.0
                 ),
@@ -984,6 +991,7 @@ def train_lidar_sac(
             progress_window = jnp.asarray(0.0, dtype=jnp.float32)
             collision_window = jnp.asarray(0, dtype=jnp.int32)
             off_track_window = jnp.asarray(0, dtype=jnp.int32)
+            unrecoverable_window = jnp.asarray(0, dtype=jnp.int32)
             race_complete_window = jnp.asarray(0, dtype=jnp.int32)
             unique_pass_window = jnp.asarray(0, dtype=jnp.int32)
             unsafe_contact_window = jnp.asarray(0, dtype=jnp.int32)

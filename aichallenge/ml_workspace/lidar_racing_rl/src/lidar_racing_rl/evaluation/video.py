@@ -19,12 +19,16 @@ class EvaluationTrace:
     poses: tuple[tuple[float, float, float], ...]
     npc_poses: tuple[tuple[tuple[float, float, float], ...], ...]
     speeds: tuple[float, ...]
+    npc_speeds: tuple[tuple[float, ...], ...]
+    nearest_opponent_distance: tuple[float, ...]
     actions: tuple[tuple[float, float], ...]
     cumulative_progress: tuple[float, ...]
     race_complete: tuple[bool, ...]
     collision: tuple[bool, ...]
+    npc_collision: tuple[bool, ...]
     off_track: tuple[bool, ...]
     truncated: tuple[bool, ...]
+    unrecoverable: tuple[bool, ...]
     control_dt: float
     track_length: float
     vehicle_length: float
@@ -49,12 +53,16 @@ class EvaluationTrace:
             len(values) != sample_count
             for values in (
                 self.speeds,
+                self.npc_speeds,
+                self.nearest_opponent_distance,
                 self.actions,
                 self.cumulative_progress,
                 self.race_complete,
                 self.collision,
+                self.npc_collision,
                 self.off_track,
                 self.truncated,
+                self.unrecoverable,
             )
         ):
             raise ValueError("evaluation video requires aligned rollout arrays")
@@ -63,6 +71,8 @@ class EvaluationTrace:
         npc_count = len(self.npc_poses[0])
         if any(len(frame) != npc_count for frame in self.npc_poses):
             raise ValueError("evaluation video requires a fixed NPC count")
+        if any(len(frame) != npc_count for frame in self.npc_speeds):
+            raise ValueError("evaluation video requires aligned NPC speeds")
         scalars = (
             *self.center_x,
             *self.center_y,
@@ -77,6 +87,8 @@ class EvaluationTrace:
                 for value in pose
             ),
             *self.speeds,
+            *(value for frame in self.npc_speeds for value in frame),
+            *self.nearest_opponent_distance,
             *(value for action in self.actions for value in action),
             *self.cumulative_progress,
             self.control_dt,
@@ -172,6 +184,10 @@ def render_evaluation_video(
     )
     actions = np.asarray(trace.actions)
     speeds = np.asarray(trace.speeds)
+    npc_speeds = np.asarray(trace.npc_speeds, dtype=float).reshape(
+        len(trace.poses), -1
+    )
+    nearest_opponent_distance = np.asarray(trace.nearest_opponent_distance)
     progress = np.asarray(trace.cumulative_progress)
 
     all_x = np.concatenate((left_x, right_x))
@@ -268,15 +284,29 @@ def render_evaluation_video(
             if trace.race_complete[index]
             else "collision"
             if trace.collision[index]
+            else "npc_collision_reset"
+            if trace.npc_collision[index]
             else "off_track"
             if trace.off_track[index]
             else "truncated"
             if trace.truncated[index]
+            else "unrecoverable"
+            if trace.unrecoverable[index]
             else "running"
+        )
+        npc_speed_text = (
+            "  ".join(
+                f"NPC{npc_index + 1}={speed:5.2f}"
+                for npc_index, speed in enumerate(npc_speeds[index])
+            )
+            if npc_speeds.shape[1]
+            else "none"
         )
         status.set_text(
             f"step {index:4d}  t={index * trace.control_dt:6.2f} s\n"
             f"speed={speeds[index]:6.2f} m/s\n"
+            f"NPC speeds: {npc_speed_text} m/s\n"
+            f"nearest opponent={nearest_opponent_distance[index]:6.2f} m\n"
             f"steer={actions[index, 0]:+6.3f}  accel={actions[index, 1]:+6.3f}\n"
             f"Frenet progress={progress[index]:7.2f}/{trace.track_length:.2f} m "
             f"({completion:5.1f}%)\n"
