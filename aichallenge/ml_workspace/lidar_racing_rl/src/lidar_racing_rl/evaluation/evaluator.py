@@ -9,6 +9,8 @@ from numbers import Integral
 from pathlib import Path
 from typing import Any, Mapping
 
+from lidar_racing_rl.evaluation.video import EvaluationTrace
+
 
 @dataclass(frozen=True)
 class EvaluationResult:
@@ -21,6 +23,7 @@ class EvaluationResult:
     elapsed_seconds: float
     checkpoint_step: int
     metrics: dict[str, float | int]
+    trace: EvaluationTrace | None = None
 
 
 def _value(mapping: Mapping[str, Any], *path: str) -> Any:
@@ -43,6 +46,7 @@ def evaluate_lidar_policy(
     *,
     checkpoint: Path,
     episodes: int,
+    capture_trace: bool = False,
 ) -> EvaluationResult:
     """Evaluate deterministic ``tanh(mean)`` actions from LiDAR only."""
 
@@ -152,6 +156,16 @@ def evaluate_lidar_policy(
     )
     accumulator = initialize_evaluation_accumulator(num_envs)
     update_metrics = jax.jit(update_evaluation_accumulator)
+    trace_poses: list[tuple[float, float, float]] = []
+    trace_speeds: list[float] = []
+    trace_actions: list[tuple[float, float]] = []
+    trace_progress: list[float] = []
+    trace_race_complete: list[bool] = []
+    trace_collision: list[bool] = []
+    trace_off_track: list[bool] = []
+    trace_truncated: list[bool] = []
+    cumulative_trace_progress = 0.0
+    trace_active = capture_trace
 
     npc_parameters = None
     npc_controller_states = None
@@ -265,6 +279,24 @@ def evaluate_lidar_policy(
         )
         diagnostics = result.diagnostics
         done = result.terminated | result.truncated
+        if trace_active:
+            pose = jax.device_get(states.simulator_state.cartesian_states[0])
+            action = jax.device_get(ego_actions[0])
+            progress_delta = float(jax.device_get(diagnostics.progress_delta[0]))
+            cumulative_trace_progress += progress_delta
+            race_complete = bool(jax.device_get(diagnostics.race_complete[0]))
+            collision = bool(jax.device_get(diagnostics.collision[0]))
+            off_track = bool(jax.device_get(diagnostics.off_track[0]))
+            truncated = bool(jax.device_get(result.truncated[0]))
+            trace_poses.append((float(pose[0]), float(pose[1]), float(pose[4])))
+            trace_speeds.append(float(jax.device_get(diagnostics.ego_speed[0])))
+            trace_actions.append((float(action[0]), float(action[1])))
+            trace_progress.append(cumulative_trace_progress)
+            trace_race_complete.append(race_complete)
+            trace_collision.append(collision)
+            trace_off_track.append(off_track)
+            trace_truncated.append(truncated)
+            trace_active = not bool(jax.device_get(done[0]))
         remaining_episodes = (
             jnp.asarray(episodes, dtype=jnp.int32) - accumulator.completed_episodes
         )
@@ -327,6 +359,41 @@ def evaluate_lidar_policy(
     host_metrics["mean_follow_duration_seconds"] = (
         float(host_metrics["mean_follow_duration_steps"]) * control_dt
     )
+    trace = None
+    if capture_trace:
+        centerline = simulator.track.centerline
+        center_x_array = jnp.asarray(centerline.xs)
+        center_y_array = jnp.asarray(centerline.ys)
+        stored_yaw = getattr(centerline, "psis", None)
+        if stored_yaw is None:
+            delta_x = jnp.roll(center_x_array, -1) - jnp.roll(center_x_array, 1)
+            delta_y = jnp.roll(center_y_array, -1) - jnp.roll(center_y_array, 1)
+            center_yaw_array = jnp.arctan2(delta_y, delta_x)
+        else:
+            center_yaw_array = jnp.asarray(stored_yaw)
+
+        def host_tuple(values: Any) -> tuple[float, ...]:
+            return tuple(float(value) for value in jax.device_get(values).tolist())
+
+        trace = EvaluationTrace(
+            center_x=host_tuple(center_x_array),
+            center_y=host_tuple(center_y_array),
+            center_yaw=host_tuple(center_yaw_array),
+            left_widths=host_tuple(jnp.asarray(simulator.track.left_widths)),
+            right_widths=host_tuple(jnp.asarray(simulator.track.right_widths)),
+            poses=tuple(trace_poses),
+            speeds=tuple(trace_speeds),
+            actions=tuple(trace_actions),
+            cumulative_progress=tuple(trace_progress),
+            race_complete=tuple(trace_race_complete),
+            collision=tuple(trace_collision),
+            off_track=tuple(trace_off_track),
+            truncated=tuple(trace_truncated),
+            control_dt=control_dt,
+            track_length=float(simulator.track_length),
+            vehicle_length=float(_value(vehicle, "length")),
+            vehicle_width=float(_value(vehicle, "width")),
+        )
     return EvaluationResult(
         requested_episodes=episodes,
         completed_episodes=int(host_metrics["episodes"]),
@@ -335,6 +402,7 @@ def evaluate_lidar_policy(
         elapsed_seconds=elapsed_seconds,
         checkpoint_step=checkpoint_metadata.step,
         metrics=host_metrics,
+        trace=trace,
     )
 
 

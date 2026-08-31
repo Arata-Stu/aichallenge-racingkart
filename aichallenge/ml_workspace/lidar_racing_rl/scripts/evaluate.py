@@ -22,6 +22,13 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _positive_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed <= 0.0:
+        raise argparse.ArgumentTypeError("value must be finite and positive")
+    return parsed
+
+
 def _normalize_config_name(name: str) -> str:
     normalized = name.removesuffix(".yaml")
     path = PurePosixPath(normalized)
@@ -157,6 +164,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--episodes", type=_positive_int, default=10)
     parser.add_argument("--output", type=Path)
     parser.add_argument(
+        "--video",
+        type=Path,
+        help="Render the first evaluated episode as a .gif or .mp4 animation.",
+    )
+    parser.add_argument("--video-fps", type=_positive_int, default=20)
+    parser.add_argument("--video-speed", type=_positive_float, default=4.0)
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate inputs without importing JAX or loading a checkpoint.",
@@ -193,6 +207,9 @@ def main() -> int:
                             args.checkpoint and args.checkpoint.exists()
                         ),
                         "output": str(args.output) if args.output else None,
+                        "video": str(args.video) if args.video else None,
+                        "video_fps": args.video_fps,
+                        "video_speed": args.video_speed,
                     },
                     indent=2,
                     sort_keys=True,
@@ -214,6 +231,13 @@ def main() -> int:
         if args.output is not None and args.output.exists():
             print(f"ERROR: evaluation output already exists: {args.output}", file=sys.stderr)
             return 2
+        if args.video is not None:
+            if args.video.suffix.lower() not in {".gif", ".mp4"}:
+                print("ERROR: --video must end in .gif or .mp4", file=sys.stderr)
+                return 2
+            if args.video.exists():
+                print(f"ERROR: evaluation video already exists: {args.video}", file=sys.stderr)
+                return 2
 
         from lidar_racing_rl.evaluation.evaluator import evaluate_lidar_policy
 
@@ -221,6 +245,7 @@ def main() -> int:
             _resolved_container(config),
             checkpoint=args.checkpoint,
             episodes=args.episodes,
+            capture_trace=args.video is not None,
         )
         payload = {
             "requested_episodes": result.requested_episodes,
@@ -230,7 +255,19 @@ def main() -> int:
             "elapsed_seconds": result.elapsed_seconds,
             "checkpoint_step": result.checkpoint_step,
             "metrics": result.metrics,
+            "video": str(args.video) if args.video else None,
         }
+        if args.video is not None:
+            if result.trace is None:
+                raise RuntimeError("evaluation did not return the requested rollout trace")
+            from lidar_racing_rl.evaluation.video import render_evaluation_video
+
+            render_evaluation_video(
+                result.trace,
+                args.video,
+                fps=args.video_fps,
+                playback_speed=args.video_speed,
+            )
         serialized = json.dumps(payload, allow_nan=False, indent=2, sort_keys=True)
         print(serialized)
         if args.output is not None:

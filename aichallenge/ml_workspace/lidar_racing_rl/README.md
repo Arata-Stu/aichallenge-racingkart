@@ -189,6 +189,12 @@ make lidar-rl-eval \
   LIDAR_RL_GPU=1 \
   LIDAR_RL_ARGS='--config-name step1_single_vehicle --checkpoint outputs/smoke-step1/checkpoints --episodes 10 --output outputs/smoke-step1/evaluation.json'
 
+# 最初の決定論episodeを4倍速GIFとして可視化する。画面には車両、軌跡、
+# 正規化action、速度、Frenet累積進捗、simulatorの終了理由を表示する。
+make lidar-rl-eval \
+  LIDAR_RL_GPU=1 \
+  LIDAR_RL_ARGS='--config-name step1_single_vehicle --checkpoint outputs/smoke-step1/checkpoints --episodes 1 --output outputs/smoke-step1/visual-evaluation.json --video outputs/smoke-step1/rollout.gif --video-speed 4'
+
 make lidar-rl-export \
   LIDAR_RL_GPU=1 \
   LIDAR_RL_ARGS='--checkpoint outputs/smoke-step1/checkpoints --output exported/smoke-step1'
