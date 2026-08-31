@@ -280,7 +280,9 @@ def evaluate_lidar_policy(
         diagnostics = result.diagnostics
         done = result.terminated | result.truncated
         if trace_active:
-            pose = jax.device_get(states.simulator_state.cartesian_states[0])
+            # Batched simulator state is [environment, agent, state].  Capture
+            # only Ego in the first visualized environment.
+            pose = jax.device_get(states.simulator_state.cartesian_states[0, 0])
             action = jax.device_get(ego_actions[0])
             progress_delta = float(jax.device_get(diagnostics.progress_delta[0]))
             cumulative_trace_progress += progress_delta

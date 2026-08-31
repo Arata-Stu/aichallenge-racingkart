@@ -4,11 +4,22 @@ from __future__ import annotations
 
 import math
 import unittest
+from pathlib import Path
 
 from lidar_racing_rl.evaluation.video import EvaluationTrace, _frame_indices, frame_stride
 
 
 class EvaluationVideoContractTest(unittest.TestCase):
+    def test_trace_selects_environment_and_ego_axes(self) -> None:
+        evaluator = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "lidar_racing_rl"
+            / "evaluation"
+            / "evaluator.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("cartesian_states[0, 0]", evaluator)
+
     def test_four_times_playback_at_twenty_hz_keeps_every_fourth_sample(self) -> None:
         self.assertEqual(frame_stride(control_dt=0.05, fps=20, playback_speed=4.0), 4)
         self.assertEqual(
