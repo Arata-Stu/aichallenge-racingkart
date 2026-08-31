@@ -214,7 +214,7 @@ class SACSourceContractTest(unittest.TestCase):
         )
         self.assertNotIn("critic_params=initialized", trainer_source)
         self.assertIn('lineage["actor_initialization"]', trainer_source)
-        self.assertIn("are mutually exclusive", train_cli_source)
+        self.assertIn("mutually exclusive", train_cli_source)
 
     def test_default_update_count_matches_vector_collection_size(self) -> None:
         config_root = SAC_ROOT.parents[2] / "configs"
