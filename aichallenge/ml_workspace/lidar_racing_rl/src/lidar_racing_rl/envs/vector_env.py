@@ -49,7 +49,7 @@ from lidar_racing_rl.envs.scan_corruption import (
     apply_scan_corruption,
     initialize_scan_corruption_state,
 )
-from lidar_racing_rl.envs.termination import ego_done_flags
+from lidar_racing_rl.envs.termination import ego_done_flags, update_episode_progress
 
 
 EGO_INDEX = 0
@@ -325,6 +325,7 @@ class LidarRacingState:
     overtaking_state: OvertakingState
     previous_ego_action: jax.Array
     npc_scenario_valid: jax.Array
+    episode_progress: jax.Array
 
 
 class StepDiagnostics(NamedTuple):
@@ -511,6 +512,7 @@ class LidarRacingEnv:
             overtaking_state=overtaking_state,
             previous_ego_action=jnp.zeros((2,), dtype=jnp.float32),
             npc_scenario_valid=jnp.asarray(True),
+            episode_progress=jnp.asarray(0.0, dtype=jnp.float32),
         )
         return state, history[EGO_INDEX]
 
@@ -580,9 +582,18 @@ class LidarRacingEnv:
         npc_scenario_valid = (
             state.npc_scenario_valid & ~npc_collision_without_ego
         )
-        race_complete = (
-            simulator_state.num_laps[EGO_INDEX] >= self.settings.max_num_laps
+        progress_delta = wrapped_progress_delta(
+            state.simulator_state.frenet_states[EGO_INDEX, 0],
+            simulator_state.frenet_states[EGO_INDEX, 0],
+            self.simulator.track_length,
         )
+        episode_progress, race_complete = update_episode_progress(
+            state.episode_progress,
+            progress_delta,
+            track_length=self.simulator.track_length,
+            max_num_laps=self.settings.max_num_laps,
+        )
+        progress_delta = jnp.where(jnp.isfinite(progress_delta), progress_delta, 0.0)
         ego_frenet = simulator_state.frenet_states[EGO_INDEX]
         lateral_clearance = (
             0.5 * self.settings.vehicle_length * jnp.abs(jnp.sin(ego_frenet[2]))
@@ -603,12 +614,6 @@ class LidarRacingEnv:
             step_count=simulator_state.step,
             max_steps=self.settings.max_steps,
         )
-        progress_delta = wrapped_progress_delta(
-            state.simulator_state.frenet_states[EGO_INDEX, 0],
-            simulator_state.frenet_states[EGO_INDEX, 0],
-            self.simulator.track_length,
-        )
-        progress_delta = jnp.where(jnp.isfinite(progress_delta), progress_delta, 0.0)
         relative_progress, _ = nearest_opponent_relative_progress(
             state.simulator_state.frenet_states[EGO_INDEX, 0],
             simulator_state.frenet_states[EGO_INDEX, 0],
@@ -753,6 +758,7 @@ class LidarRacingEnv:
             overtaking_state=overtaking_state,
             previous_ego_action=ego_normalized_action,
             npc_scenario_valid=npc_scenario_valid,
+            episode_progress=episode_progress,
         )
         reset_state, reset_observation = self._reset_one(reset_key)
         done = terminated | truncated

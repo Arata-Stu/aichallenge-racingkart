@@ -9,7 +9,7 @@ from lidar_racing_rl.envs.reward import (
     trajectory_aided_action_reward,
     wrapped_progress_delta,
 )
-from lidar_racing_rl.envs.termination import ego_done_flags
+from lidar_racing_rl.envs.termination import ego_done_flags, update_episode_progress
 
 
 def test_progress_wraparound() -> None:
@@ -78,3 +78,26 @@ def test_time_limit_is_truncated_not_terminated() -> None:
     )
     assert not bool(terminated)
     assert bool(truncated)
+
+
+def test_race_completion_is_measured_from_randomized_episode_start() -> None:
+    first_delta = wrapped_progress_delta(
+        jnp.asarray(90.0), jnp.asarray(10.0), jnp.asarray(100.0)
+    )
+    progress, race_complete = update_episode_progress(
+        jnp.asarray(0.0),
+        first_delta,
+        track_length=jnp.asarray(100.0),
+        max_num_laps=1,
+    )
+    np.testing.assert_allclose(progress, 20.0)
+    assert not bool(race_complete)
+
+    progress, race_complete = update_episode_progress(
+        progress,
+        jnp.asarray(80.0),
+        track_length=jnp.asarray(100.0),
+        max_num_laps=1,
+    )
+    np.testing.assert_allclose(progress, 100.0)
+    assert bool(race_complete)

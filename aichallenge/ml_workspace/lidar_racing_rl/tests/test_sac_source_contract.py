@@ -10,6 +10,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SAC_ROOT = PROJECT_ROOT / "src" / "lidar_racing_rl" / "sac"
 SCRIPT_ROOT = PROJECT_ROOT / "scripts"
+ENV_ROOT = PROJECT_ROOT / "src" / "lidar_racing_rl" / "envs"
 
 
 def _tree(name: str) -> ast.Module:
@@ -40,6 +41,17 @@ def _called_names(node: ast.AST) -> set[str]:
 
 
 class SACSourceContractTest(unittest.TestCase):
+    def test_random_reset_race_completion_uses_episode_distance(self) -> None:
+        vector_source = (ENV_ROOT / "vector_env.py").read_text(encoding="utf-8")
+        termination_source = (ENV_ROOT / "termination.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("episode_progress: jax.Array", vector_source)
+        self.assertIn("update_episode_progress(", vector_source)
+        self.assertNotIn("simulator_state.num_laps[EGO_INDEX]", vector_source)
+        self.assertIn("next_progress >=", termination_source)
+
     def test_sac_initializer_keeps_metadata_tools_jax_free(self) -> None:
         tree = _tree("__init__.py")
         imports = [
