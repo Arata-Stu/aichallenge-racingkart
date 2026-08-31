@@ -666,6 +666,10 @@ def _run_rollout(
                     ego_speed,
                     ego_action,
                     result.diagnostics.collision,
+                    result.diagnostics.collision_with_opponent,
+                    result.diagnostics.collision_with_wall,
+                    result.diagnostics.unsafe_contact,
+                    result.diagnostics.nearest_opponent_distance,
                     result.diagnostics.off_track,
                     result.diagnostics.race_complete,
                     result.diagnostics.unrecoverable,
@@ -713,6 +717,10 @@ def _run_rollout(
                 ego_speed,
                 ego_action,
                 result.diagnostics.collision,
+                result.diagnostics.collision_with_opponent,
+                result.diagnostics.collision_with_wall,
+                result.diagnostics.unsafe_contact,
+                result.diagnostics.nearest_opponent_distance,
                 result.diagnostics.off_track,
                 result.diagnostics.race_complete,
                 result.diagnostics.unrecoverable,
@@ -745,6 +753,10 @@ def _run_rollout(
         ego_speeds,
         ego_actions,
         collisions,
+        collisions_with_opponent,
+        collisions_with_wall,
+        unsafe_contacts,
+        nearest_opponent_distances,
         off_tracks,
         race_completes,
         unrecoverables,
@@ -774,6 +786,15 @@ def _run_rollout(
     )
     ego_moved = maximum_ego_speed is not None and maximum_ego_speed > 1.0e-3
     collision_count = int(np.count_nonzero(np.asarray(collisions)))
+    collision_with_opponent_count = int(
+        np.count_nonzero(np.asarray(collisions_with_opponent))
+    )
+    collision_with_wall_count = int(
+        np.count_nonzero(np.asarray(collisions_with_wall))
+    )
+    unsafe_contact_count = int(
+        np.count_nonzero(np.asarray(unsafe_contacts))
+    )
     off_track_count = int(np.count_nonzero(np.asarray(off_tracks)))
     race_complete_count = int(np.count_nonzero(np.asarray(race_completes)))
     unrecoverable_count = int(np.count_nonzero(np.asarray(unrecoverables)))
@@ -841,6 +862,10 @@ def _run_rollout(
         ),
         "scan_corruption_configured": "scan_corruption" in config.env,
         "scan_corruption_enabled": scan_corruption_config.enabled,
+        "reset_placement": {
+            "all_vehicles_reset_together": True,
+            "longitudinal_spacing": settings.reset_longitudinal_spacing,
+        },
         "teacher_gt_usage": (
             "pose_for_teacher_and_npc_control_only; Actor observation remains LiDAR-only"
             if action_source == "pure-pursuit"
@@ -868,10 +893,20 @@ def _run_rollout(
         "truncated_count": int(np.count_nonzero(np.asarray(truncated))),
         "termination_causes": {
             "collision": collision_count,
+            "collision_with_opponent": collision_with_opponent_count,
+            "collision_with_wall": collision_with_wall_count,
             "off_track": off_track_count,
             "race_complete": race_complete_count,
             "unrecoverable": unrecoverable_count,
             "unexpected": unexpected_termination_count,
+        },
+        "interaction_diagnostics": {
+            "unsafe_contact_count": unsafe_contact_count,
+            "minimum_opponent_distance": (
+                float(np.min(np.asarray(nearest_opponent_distances)))
+                if settings.num_agents > 1
+                else None
+            ),
         },
         "track_clearance": {
             "vehicle_length": settings.vehicle_length,

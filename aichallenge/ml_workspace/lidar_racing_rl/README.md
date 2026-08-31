@@ -308,7 +308,7 @@ CONTROL_METHOD=lidar_racing make eval
 ## 設定と生成物
 
 - `configs/train/step1_single_vehicle.yaml`: 単車両LiDAR-only学習
-- `configs/train/step2_four_vehicle.yaml`: Ego 1台とPure Pursuit NPC 3台
+- `configs/train/step2_four_vehicle.yaml`: Ego 1台とPure Pursuit NPC 3台。4台はコース順に8 m間隔で配置し、episode終了時は全車をまとめて再配置します
 - `configs/env/`: canonical scan、動的車両LiDAR、将来のdomain randomization契約
 - `configs/vehicle/f1tenth_nominal.yaml`: Spielberg初期学習用の既定F1TENTH車両
 - `configs/vehicle/aichallenge_kart.yaml`: 車両寸法とAWSIM同定値

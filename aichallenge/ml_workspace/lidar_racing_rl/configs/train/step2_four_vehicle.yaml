@@ -25,6 +25,11 @@ seed:
 env:
   num_envs: 64
   num_agents: 4
+  reset:
+    # Place Ego/NPC1/NPC2/NPC3 in track order.  Eight metres is greater than
+    # the NPC safe-following maximum (6 m) plus the 0.58 m vehicle length, so
+    # a full-environment restart cannot begin with overlapping vehicles.
+    longitudinal_spacing: 8.0
 
 training:
   ego_agent_index: 0

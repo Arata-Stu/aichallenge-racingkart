@@ -300,6 +300,7 @@ class SACSourceContractTest(unittest.TestCase):
         self.assertNotIn("- /env: domain_randomization", step2_config)
         self.assertIn("enabled: false", step2_config)
         self.assertIn("active_phase: null", step2_config)
+        self.assertIn("longitudinal_spacing: 8.0", step2_config)
 
         for path in (
             SAC_ROOT / "trainer.py",
