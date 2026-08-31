@@ -303,6 +303,8 @@ def _write_trace_svg(
     truncated: Any,
     collisions: Any,
     off_tracks: Any,
+    race_completes: Any,
+    unrecoverables: Any,
     vehicle_length: float,
     vehicle_width: float,
 ) -> None:
@@ -370,6 +372,9 @@ def _write_trace_svg(
     done = np.asarray(terminated, dtype=bool) | np.asarray(truncated, dtype=bool)
     collision = np.asarray(collisions, dtype=bool)
     off_track = np.asarray(off_tracks, dtype=bool)
+    race_complete = np.asarray(race_completes, dtype=bool)
+    unrecoverable = np.asarray(unrecoverables, dtype=bool)
+    truncated_array = np.asarray(truncated, dtype=bool)
     segments: list[Any] = []
     start = 0
     for index in np.flatnonzero(done):
@@ -402,7 +407,18 @@ def _write_trace_svg(
             )
     lines.append('</g>')
     for index in np.flatnonzero(done):
-        color = "#dc2626" if collision[index] else "#f97316"
+        if collision[index]:
+            color = "#dc2626"
+        elif off_track[index]:
+            color = "#f97316"
+        elif race_complete[index]:
+            color = "#16a34a"
+        elif unrecoverable[index]:
+            color = "#9333ea"
+        elif truncated_array[index]:
+            color = "#64748b"
+        else:
+            color = "#ca8a04"
         cx, cy = point(pose_array[index, 0], pose_array[index, 1]).split(",")
         lines.append(
             f'<circle cx="{cx}" cy="{cy}" r="4" fill="{color}" '
@@ -429,9 +445,6 @@ def _write_trace_svg(
             f'fill="{color}" fill-opacity="0.12" stroke="{color}" '
             'stroke-width="1"/>'
         )
-    for index in np.flatnonzero(off_track & ~collision):
-        cx, cy = point(pose_array[index, 0], pose_array[index, 1]).split(",")
-        lines.append(f'<circle cx="{cx}" cy="{cy}" r="3" fill="#f97316"/>')
     lines.extend(
         (
             '<g font-family="sans-serif" font-size="16" fill="#111827">',
@@ -440,6 +453,9 @@ def _write_trace_svg(
             '<text x="290" y="28" fill="#0284c7">rollout</text>',
             '<text x="370" y="28" fill="#dc2626">collision</text>',
             '<text x="455" y="28" fill="#f97316">off-track</text>',
+            '<text x="545" y="28" fill="#16a34a">race complete</text>',
+            '<text x="670" y="28" fill="#64748b">time limit</text>',
+            '<text x="760" y="28" fill="#9333ea">unrecoverable</text>',
             '</g>',
             '</svg>',
         )
@@ -941,6 +957,8 @@ def _run_rollout(
             truncated,
             collisions,
             off_tracks,
+            race_completes,
+            unrecoverables,
             settings.vehicle_length,
             settings.vehicle_width,
         )
