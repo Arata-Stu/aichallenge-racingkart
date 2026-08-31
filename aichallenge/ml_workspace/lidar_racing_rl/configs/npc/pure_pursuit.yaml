@@ -25,10 +25,12 @@ randomization:
   speed_multiplier: {min: 0.44, max: 0.53}
   # Keep the introductory traffic on centerline; add line diversity later.
   lateral_offset: {min: 0.0, max: 0.0}
-  lookahead: {min: 1.5, max: 4.0}
-  steering_gain: {min: 0.9, max: 1.1}
+  # Keep the known-stable Step-1 geometry controller fixed while introducing
+  # traffic. Speed remains the only motion randomization in this phase.
+  lookahead: {min: 1.0, max: 1.0}
+  steering_gain: {min: 1.0, max: 1.0}
   control_delay_steps: {min: 0, max: 0}
-  acceleration_gain: {min: 0.8, max: 1.2}
+  acceleration_gain: {min: 1.0, max: 1.0}
   braking_event:
     # Disabled for the introductory phase. Later curriculum phases may lower
     # a non-negative target speed, but must never force an NPC into reverse.

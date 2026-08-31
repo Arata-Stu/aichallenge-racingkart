@@ -310,6 +310,9 @@ class SACSourceContractTest(unittest.TestCase):
             PROJECT_ROOT / "configs" / "npc" / "pure_pursuit.yaml"
         ).read_text(encoding="utf-8")
         self.assertIn("speed_multiplier: {min: 0.44, max: 0.53}", npc_config)
+        self.assertIn("lookahead: {min: 1.0, max: 1.0}", npc_config)
+        self.assertIn("steering_gain: {min: 1.0, max: 1.0}", npc_config)
+        self.assertIn("acceleration_gain: {min: 1.0, max: 1.0}", npc_config)
 
         overtaking_source = (
             PROJECT_ROOT

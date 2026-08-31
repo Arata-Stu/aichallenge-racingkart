@@ -736,6 +736,7 @@ def _run_rollout(
                     result.diagnostics.collision,
                     result.diagnostics.collision_with_opponent,
                     result.diagnostics.collision_with_wall,
+                    result.diagnostics.npc_collision_flags,
                     result.diagnostics.npc_collision_without_ego,
                     result.diagnostics.unsafe_contact,
                     result.diagnostics.pass_count,
@@ -790,6 +791,7 @@ def _run_rollout(
                 result.diagnostics.collision,
                 result.diagnostics.collision_with_opponent,
                 result.diagnostics.collision_with_wall,
+                result.diagnostics.npc_collision_flags,
                 result.diagnostics.npc_collision_without_ego,
                 result.diagnostics.unsafe_contact,
                 result.diagnostics.pass_count,
@@ -829,6 +831,7 @@ def _run_rollout(
         collisions,
         collisions_with_opponent,
         collisions_with_wall,
+        npc_collision_flags,
         npc_collisions,
         unsafe_contacts,
         pass_counts,
@@ -870,6 +873,21 @@ def _run_rollout(
         np.count_nonzero(np.asarray(collisions_with_wall))
     )
     npc_collision_count = int(np.count_nonzero(np.asarray(npc_collisions)))
+    npc_collision_flags_array = np.asarray(npc_collision_flags, dtype=bool)
+    npc_collision_by_agent = []
+    for npc_offset in range(npc_collision_flags_array.shape[1]):
+        agent_flags = npc_collision_flags_array[:, npc_offset]
+        npc_collision_by_agent.append(
+            {
+                "agent_index": npc_offset + 1,
+                "first_collision_step": (
+                    int(np.argmax(agent_flags)) + 1
+                    if np.any(agent_flags)
+                    else None
+                ),
+                "sticky_collision_step_count": int(np.count_nonzero(agent_flags)),
+            }
+        )
     unsafe_contact_count = int(
         np.count_nonzero(np.asarray(unsafe_contacts))
     )
@@ -944,6 +962,16 @@ def _run_rollout(
                 "lateral_offset_randomization": (
                     npc_bounds.lateral_offset[0] != npc_bounds.lateral_offset[1]
                 ),
+                "lookahead_randomization": (
+                    npc_bounds.lookahead[0] != npc_bounds.lookahead[1]
+                ),
+                "steering_gain_randomization": (
+                    npc_bounds.steering_gain[0] != npc_bounds.steering_gain[1]
+                ),
+                "acceleration_gain_randomization": (
+                    npc_bounds.acceleration_gain[0]
+                    != npc_bounds.acceleration_gain[1]
+                ),
                 "resample_on_ego_auto_reset": True,
                 "speed_multiplier_range": list(npc_bounds.speed_multiplier),
                 "speed_resampled_each_episode": True,
@@ -1000,6 +1028,7 @@ def _run_rollout(
             "unsafe_contact_count": unsafe_contact_count,
             "unique_pass_event_count": unique_pass_event_count,
             "minimum_observed_npc_speed": minimum_observed_npc_speed,
+            "npc_collision_by_agent": npc_collision_by_agent,
             "minimum_opponent_distance": (
                 float(np.min(np.asarray(nearest_opponent_distances)))
                 if settings.num_agents > 1

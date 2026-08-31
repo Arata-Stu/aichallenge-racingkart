@@ -140,7 +140,7 @@ docker compose run --rm --no-deps lidar-rl \
 
 SVGにはcenterlineの順序、左右境界、episodeごとに分割した走行軌跡、collisionとoff-track地点を描画します。JAXを初期化せず設定だけを検証するには末尾へ`--dry-run`を追加します。固定actionのAPI smokeが必要な場合だけ`--action-source fixed`と`--ego-*` / `--npc-*`を指定します。
 
-Step 2の導入シナリオでは、Egoの前方12 / 24 / 36 mへ3台のNPCを順番に配置します。開始anchorはepisodeごとにコース全周から一様に選ぶため、遭遇区間は固定されません。NPC速度倍率もepisodeごとに独立抽選した後、近いNPCから遠いNPCへ非減少順に並べます。これにより後方NPCの追突を抑えつつ、直線目標3.52〜4.24 m/sの3台を1周内に追い越す機会を作ります。導入段階ではNPCの制動イベント・制御遅延・横offsetを無効にし、通常の追従や停止待機に明示的なstalled penaltyを与えません。これらは基本追越しの成立後にcurriculumで段階的に追加します。
+Step 2の導入シナリオでは、Egoの前方12 / 24 / 36 mへ3台のNPCを順番に配置します。開始anchorはepisodeごとにコース全周から一様に選ぶため、遭遇区間は固定されません。NPC速度倍率もepisodeごとに独立抽選した後、近いNPCから遠いNPCへ非減少順に並べます。これにより後方NPCの追突を抑えつつ、直線目標3.52〜4.24 m/sの3台を1周内に追い越す機会を作ります。導入段階ではNPCのlookahead・操舵gain・加速gainを検証済みの値に固定し、制動イベント・制御遅延・横offsetも無効にします。通常の追従や停止待機に明示的なstalled penaltyは与えません。これらの多様化は基本追越しの成立後にcurriculumで段階的に追加します。
 
 Step 2のReplay warmupでは、GTをActor観測へ渡さず、教師側だけで前走車との安全距離を制御します。教師は無理に追い越さず安全な追従例を蓄積し、その後のLiDAR-only SACが進行・初回pass報酬と危険接近・衝突ペナルティから「待つ／抜く」を暗黙に選択します。
 

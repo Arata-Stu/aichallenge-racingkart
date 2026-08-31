@@ -346,6 +346,7 @@ class StepDiagnostics(NamedTuple):
     opponent_present: jax.Array
     collision_with_opponent: jax.Array
     collision_with_wall: jax.Array
+    npc_collision_flags: jax.Array
     npc_collision_without_ego: jax.Array
     minimum_npc_speed: jax.Array
     terminal_ego_pose: jax.Array
@@ -572,8 +573,9 @@ class LidarRacingEnv:
 
         # Simulator GT is permitted only for reward and episode semantics.
         ego_collision = simulator_state.collisions[EGO_INDEX]
+        npc_collision_flags = simulator_state.collisions[1:]
         npc_collision_without_ego = (
-            jnp.any(simulator_state.collisions[1:]) & ~ego_collision
+            jnp.any(npc_collision_flags) & ~ego_collision
         )
         npc_scenario_valid = (
             state.npc_scenario_valid & ~npc_collision_without_ego
@@ -789,6 +791,7 @@ class LidarRacingEnv:
                 opponent_present=opponent_present,
                 collision_with_opponent=collision_with_opponent,
                 collision_with_wall=collision_with_wall,
+                npc_collision_flags=npc_collision_flags,
                 npc_collision_without_ego=npc_collision_without_ego,
                 minimum_npc_speed=minimum_npc_speed,
                 terminal_ego_pose=simulator_state.cartesian_states[
