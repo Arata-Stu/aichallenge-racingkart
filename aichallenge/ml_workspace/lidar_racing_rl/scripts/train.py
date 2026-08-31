@@ -429,6 +429,7 @@ def main() -> int:
             minimum_smoke_transitions = (
                 replay_warmup
                 + actor_update_start
+                + int(config.agent.update.actor_behavior_blend_updates)
                 + int(config.env.num_envs)
             )
             print(

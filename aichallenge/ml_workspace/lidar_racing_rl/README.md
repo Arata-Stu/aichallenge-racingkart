@@ -212,7 +212,7 @@ checkpointにはReplay Bufferと環境状態を含めません。再開時はAct
 
 Step 1で完走できるActorをStep 2へ移す場合は、`training.initialize_actor_from`を使います。この経路はActor parameterだけをchecksum検証後に読み込み、Critic、target Critic、temperature、全optimizer state、Replay、学習stepをStep 2用に新規初期化します。元checkpointとcommit SHAは`run_manifest.json`の`lineage.actor_initialization`へ保存されます。`training.resume_from`との同時指定は拒否します。
 
-まず、最新sourceで4台Pure Pursuitを2,400 step走らせ、`healthy: true`、`npc_collision_without_ego_step_count: 0`、`minimum_observed_npc_speed >= 0`を確認します。その後、Step 1で評価済みのcheckpoint（例では64/64完走した150,000 update）からActor-onlyで115,200 transitionのStep 2 smokeを行います。これによりReplay warmup、50,000 Critic-only update、約15,000回のActor解凍後updateを一度のrunで検証します。
+まず、最新sourceで4台Pure Pursuitを2,400 step走らせ、`healthy: true`、`npc_collision_without_ego_step_count: 0`、`minimum_observed_npc_speed >= 0`を確認します。その後、Step 1で評価済みのcheckpoint（例では64/64完走した150,000 update）からActor-onlyで160,000 transitionのStep 2 smokeを行います。これによりReplay warmup、50,000 Critic-only update、50,000 updateの教師→Actor混合移行、その後の完全なActor走行までを一度のrunで検証します。
 
 ```bash
 HOST_UID="$(id -u)" HOST_GID="$(id -g)" \
@@ -228,7 +228,7 @@ docker compose -f compose.yaml -f compose.gpu.yaml \
 
 make -C ../../.. lidar-rl-train-step2 \
   LIDAR_RL_GPU=1 \
-  LIDAR_RL_ARGS='--max-transitions 115200 --output outputs/smoke-step2-stabilized training.initialize_actor_from=outputs/train-step1-tal-stable-1m/checkpoints/step_000000150000'
+  LIDAR_RL_ARGS='--max-transitions 160000 --output outputs/smoke-step2-stabilized training.initialize_actor_from=outputs/train-step1-tal-stable-1m/checkpoints/step_000000150000'
 ```
 
 smokeのReplay sample、有限なloss、NPC単独衝突0を確認した後、別の空outputへ本学習を開始します。Step 2の既定budgetは200万transitionです。
