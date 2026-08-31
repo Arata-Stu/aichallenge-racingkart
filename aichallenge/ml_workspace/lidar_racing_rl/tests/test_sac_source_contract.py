@@ -57,8 +57,12 @@ class SACSourceContractTest(unittest.TestCase):
         action_source = (ENV_ROOT / "action.py").read_text(encoding="utf-8")
 
         self.assertIn("clamp_nonreversing_acceleration(", vector_source)
-        self.assertIn("ego_speed < -velocity_tolerance", vector_source)
+        self.assertIn("ego_speed < -negative_velocity_tolerance", vector_source)
         self.assertIn("ego_speed > self.settings.max_velocity", vector_source)
+        self.assertIn(
+            "self.settings.max_acceleration) * self.settings.control_dt",
+            vector_source,
+        )
         self.assertIn("terminated = terminated | npc_collision_without_ego", vector_source)
         self.assertIn("-jnp.maximum(speed, 0.0) / control_dt", action_source)
 

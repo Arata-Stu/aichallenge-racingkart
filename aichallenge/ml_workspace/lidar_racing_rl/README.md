@@ -148,7 +148,7 @@ Step 2のReplay warmupでは、GTをActor観測へ渡さず、教師側だけで
 
 追越し報酬は各NPCの最初のpassだけが対象です。同一NPCを抜き直して報酬を反復取得することはできません。追越し中の近接は毎stepのunsafe-contact項、実接触はterminal collisionとして別々に罰します。評価では1台以上を抜いた`overtake_success_rate`に加えて、3台すべてを抜き、接触・off-trackなしで1周を終えた`all_opponents_overtaken_rate`を記録します。Egoと無関係なNPC衝突もtraffic scenario invalidとして即座に全車をresetし、sticky collision状態の停止車両を後続Replayへ混入させません。
 
-F1TENTHの加速度制約は最低速度を越えた後の負加速度を止めるだけで、強い制動が1 stepで速度0を通過すること自体は防ぎません。この境界ではEgo/NPC双方の最終加速度を現在速度と制御周期から非逆走範囲へclampします。それでもEgo速度が負値または設定上限を越えた場合は`unrecoverable_state_count`としてterminal resetします。評価動画にはEgo/NPC速度、最小車間距離、`unrecoverable` / `npc_collision_reset`状態を表示します。
+F1TENTHの加速度制約は最低速度を越えた後の負加速度を止めるだけで、強い制動が1 stepで速度0を通過すること自体は防ぎません。この境界ではEgo/NPC双方の最終加速度を現在速度と制御周期から非逆走範囲へclampします。それでもEgo速度が負値、または1制御周期の加速で到達可能な許容幅を越えて設定上限を超過した場合は`unrecoverable_state_count`としてterminal resetします。評価動画にはEgo/NPC速度、最小車間距離、`unrecoverable` / `npc_collision_reset`状態を表示します。
 
 ## 64環境benchmark
 

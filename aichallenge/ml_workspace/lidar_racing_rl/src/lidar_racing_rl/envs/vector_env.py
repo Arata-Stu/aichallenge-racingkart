@@ -625,12 +625,20 @@ class LidarRacingEnv:
             clearance=lateral_clearance,
         )
         ego_speed = simulator_state.cartesian_states[EGO_INDEX, 3]
-        velocity_tolerance = 1.0e-3 * jnp.maximum(
+        negative_velocity_tolerance = 1.0e-3 * jnp.maximum(
             1.0, jnp.asarray(self.settings.max_velocity)
         )
+        # The simulator can cross the configured upper velocity by a small
+        # amount within one control interval before its acceleration
+        # constraint engages.  Permit that physically reachable overshoot,
+        # while keeping the non-reverse boundary intentionally strict.
+        upper_velocity_tolerance = (
+            abs(self.settings.max_acceleration) * self.settings.control_dt
+            + negative_velocity_tolerance
+        )
         velocity_out_of_bounds = (
-            (ego_speed < -velocity_tolerance)
-            | (ego_speed > self.settings.max_velocity + velocity_tolerance)
+            (ego_speed < -negative_velocity_tolerance)
+            | (ego_speed > self.settings.max_velocity + upper_velocity_tolerance)
         )
         unrecoverable = (
             ~jnp.all(jnp.isfinite(simulator_state.cartesian_states[EGO_INDEX]))
