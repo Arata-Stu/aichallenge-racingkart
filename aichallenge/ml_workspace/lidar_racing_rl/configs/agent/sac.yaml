@@ -49,6 +49,9 @@ update:
   # Step 1 updates Actor/Critic/temperature together. Transfer stages may
   # override this to pretrain a new Critic before changing a warm-start Actor.
   actor_update_start_step: 0
+  # Number of learner updates used to blend rollout behavior from the GT-only
+  # teacher to the Actor after Actor updates start. Step 1 switches directly.
+  actor_behavior_blend_updates: 0
   batch_size: 256
   # One collection adds env.num_envs transitions.  Keep the default update-to-data
   # ratio at 1 so the Actor learns from the teacher warmup before collecting its

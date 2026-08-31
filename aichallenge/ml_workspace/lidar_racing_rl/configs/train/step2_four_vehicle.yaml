@@ -51,16 +51,34 @@ agent:
   optimizer:
     # Protect the Step 1 policy after the Critic-only transfer phase.
     actor_learning_rate: 0.00003
+    temperature_learning_rate: 0.00003
   update:
     # The Step 2 Critic and target Critic are new. Fit them to traffic replay
     # before allowing either Actor or entropy-temperature updates.
     actor_update_start_step: 50000
+    # Avoid an abrupt teacher-to-Actor behavior switch. The blend rises
+    # linearly from 0 to 1 after the Critic-only phase.
+    actor_behavior_blend_updates: 50000
+
+vehicle:
+  vehicle:
+    # Step 1 was trained with this cap. Preserve the action-to-dynamics
+    # contract during introductory traffic transfer.
+    max_velocity: 5.0
+
+npc:
+  longitudinal_controller:
+    base_target_speed: 5.0
+  randomization:
+    # Preserve the former 3.5--4.25 m/s straight targets after changing the
+    # common waypoint base speed from 8 to 5 m/s.
+    speed_multiplier: {min: 0.70, max: 0.85}
 
 teacher:
   enabled_for_rollout_smoke: true
   type: pure_pursuit
   reference_line: centerline
-  base_target_speed: 8.0
+  base_target_speed: 5.0
   lookahead: 1.0
   speed_multiplier: 1.0
   speed_profile:

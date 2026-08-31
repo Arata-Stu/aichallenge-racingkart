@@ -216,8 +216,13 @@ class SACSourceContractTest(unittest.TestCase):
         self.assertIn('lineage["actor_initialization"]', trainer_source)
         self.assertIn("mutually exclusive", train_cli_source)
         self.assertIn("actor_learning_rate: 0.00003", step2_config)
+        self.assertIn("temperature_learning_rate: 0.00003", step2_config)
         self.assertIn("actor_update_start_step: 50000", step2_config)
+        self.assertIn("actor_behavior_blend_updates: 50000", step2_config)
         self.assertIn("max_steps: 3000", step2_config)
+        self.assertIn("max_velocity: 5.0", step2_config)
+        self.assertIn("base_target_speed: 5.0", step2_config)
+        self.assertIn("speed_multiplier: {min: 0.70, max: 0.85}", step2_config)
         self.assertIn("enabled: true", step2_config)
         self.assertIn("weight: 0.3", step2_config)
 
@@ -232,7 +237,10 @@ class SACSourceContractTest(unittest.TestCase):
             "mean_completed_episode_peak_progress_meters",
             "mean_completed_episode_peak_progress_fraction",
             "maximum_completed_episode_peak_progress_fraction",
+            "mean_active_episode_peak_progress_fraction",
+            "maximum_active_episode_peak_progress_fraction",
             "actor_updates_enabled",
+            "actor_behavior_blend",
         ):
             with self.subTest(metric=metric):
                 self.assertIn(f'"{metric}"', trainer_source)

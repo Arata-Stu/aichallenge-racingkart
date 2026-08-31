@@ -396,10 +396,15 @@ def train_lidar_sac(
     updates_per_collection = int(
         _value(config, "agent", "update", "updates_per_collection")
     )
+    actor_behavior_blend_updates = int(
+        _value(config, "agent", "update", "actor_behavior_blend_updates")
+    )
     if warmup_transitions < batch_size:
         raise ValueError("replay warmup must be at least one learner batch")
     if updates_per_collection < 1:
         raise ValueError("updates_per_collection must be positive")
+    if actor_behavior_blend_updates < 0:
+        raise ValueError("actor_behavior_blend_updates cannot be negative")
 
     learner_config = SACLearnerConfig(
         discount=float(_value(config, "agent", "update", "discount")),
@@ -652,6 +657,7 @@ def train_lidar_sac(
     last_checkpoint_bucket = learner_updates // checkpoint_interval
     last_checkpoint_update: int | None = None
     latest_update_metrics = None
+    latest_actor_behavior_blend = 0.0
     reward_window = jnp.asarray(0.0, dtype=jnp.float32)
     trajectory_aided_reward_window = jnp.asarray(0.0, dtype=jnp.float32)
     progress_window = jnp.asarray(0.0, dtype=jnp.float32)
@@ -683,14 +689,42 @@ def train_lidar_sac(
         reference_actions = teacher_actions(
             states.simulator_state.cartesian_states
         )
-        if replay_collected_transitions < warmup_transitions:
+        if (
+            replay_collected_transitions < warmup_transitions
+            or learner_updates < learner_config.actor_update_start_step
+        ):
             noise = (
                 jax.random.normal(noise_key, reference_actions.shape)
                 * teacher_noise_std
             )
             ego_actions = jnp.clip(reference_actions + noise, -1.0, 1.0)
+            latest_actor_behavior_blend = 0.0
         else:
-            ego_actions = actor_action(learner_state.actor_params, observations, policy_key)
+            actor_actions = actor_action(
+                learner_state.actor_params,
+                observations,
+                policy_key,
+            )
+            if actor_behavior_blend_updates == 0:
+                latest_actor_behavior_blend = 1.0
+            else:
+                latest_actor_behavior_blend = min(
+                    1.0,
+                    max(
+                        0.0,
+                        (
+                            learner_updates
+                            - learner_config.actor_update_start_step
+                        )
+                        / actor_behavior_blend_updates,
+                    ),
+                )
+            ego_actions = jnp.clip(
+                (1.0 - latest_actor_behavior_blend) * reference_actions
+                + latest_actor_behavior_blend * actor_actions,
+                -1.0,
+                1.0,
+            )
 
         if num_agents == 4:
             assert npc_action_function is not None
@@ -836,6 +870,17 @@ def train_lidar_sac(
             completed_peak_progress_max = float(
                 jax.device_get(completed_peak_progress_max_window)
             )
+            active_peak_progress = jnp.clip(
+                episode_peak_progress,
+                0.0,
+                track_length,
+            )
+            active_peak_progress_mean = float(
+                jax.device_get(jnp.mean(active_peak_progress))
+            )
+            active_peak_progress_max = float(
+                jax.device_get(jnp.max(active_peak_progress))
+            )
             record: dict[str, Any] = {
                 "collection": collections,
                 "environment_transitions": cumulative_environment_transitions,
@@ -893,6 +938,12 @@ def train_lidar_sac(
                     if completed_episodes
                     else 0.0
                 ),
+                "mean_active_episode_peak_progress_fraction": (
+                    active_peak_progress_mean / track_length
+                ),
+                "maximum_active_episode_peak_progress_fraction": (
+                    active_peak_progress_max / track_length
+                ),
                 "unique_passes_per_transition": (
                     unique_passes / window_transitions
                 ),
@@ -910,6 +961,8 @@ def train_lidar_sac(
                     learner_updates >= learner_config.actor_update_start_step
                 ),
                 "actor_update_start_step": learner_config.actor_update_start_step,
+                "actor_behavior_blend": latest_actor_behavior_blend,
+                "actor_behavior_blend_updates": actor_behavior_blend_updates,
             }
             if latest_update_metrics is not None:
                 host_metrics = jax.device_get(latest_update_metrics)

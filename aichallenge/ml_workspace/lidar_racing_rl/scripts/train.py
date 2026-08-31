@@ -73,6 +73,7 @@ def _validate_config(config: Any) -> tuple[list[str], list[str]]:
         "agent.update.batch_size",
         "agent.update.target_entropy",
         "agent.update.actor_update_start_step",
+        "agent.update.actor_behavior_blend_updates",
         "agent.update.updates_per_collection",
         "agent.optimizer.initial_temperature",
         "agent.checkpoint.save_interval_updates",
@@ -244,6 +245,16 @@ def _validate_config(config: Any) -> tuple[list[str], list[str]]:
         or actor_update_start_step < 0
     ):
         errors.append("agent.update.actor_update_start_step must be non-negative")
+    actor_behavior_blend_updates = _select(
+        config,
+        "agent.update.actor_behavior_blend_updates",
+    )
+    if (
+        isinstance(actor_behavior_blend_updates, bool)
+        or not isinstance(actor_behavior_blend_updates, int)
+        or actor_behavior_blend_updates < 0
+    ):
+        errors.append("agent.update.actor_behavior_blend_updates must be non-negative")
     if (
         isinstance(replay_capacity, int)
         and isinstance(replay_warmup, int)
