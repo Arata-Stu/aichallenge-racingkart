@@ -15,10 +15,12 @@ export HOST_UID HOST_GID
 # the NVIDIA overlay; CPU is the portable default (including macOS smoke use).
 LIDAR_RL_DIR := aichallenge/ml_workspace/lidar_racing_rl
 LIDAR_RL_GPU ?= 0
-LIDAR_RL_COMPOSE = docker compose --project-directory $(LIDAR_RL_DIR) \
-	-f $(LIDAR_RL_DIR)/compose.yaml \
+LIDAR_RL_CPU_COMPOSE = docker compose --project-directory $(LIDAR_RL_DIR) \
+	-f $(LIDAR_RL_DIR)/compose.yaml
+LIDAR_RL_COMPOSE = $(LIDAR_RL_CPU_COMPOSE) \
 	$(if $(filter 1 true yes,$(LIDAR_RL_GPU)),-f $(LIDAR_RL_DIR)/compose.gpu.yaml)
 LIDAR_RL_RUN = $(LIDAR_RL_COMPOSE) run --rm --no-deps lidar-rl
+LIDAR_RL_CPU_RUN = $(LIDAR_RL_CPU_COMPOSE) run --rm --no-deps lidar-rl
 LIDAR_RL_ARGS ?=
 # The path dependency is optional in pyproject.toml, but every executable
 # environment entry point needs it. CUDA remains opt-in with the GPU overlay.
@@ -26,8 +28,9 @@ LIDAR_RL_UV_EXTRAS = --extra f1tenth \
 	$(if $(filter 1 true yes,$(LIDAR_RL_GPU)),--extra cuda)
 LIDAR_RL_SYNC_ARGS ?= $(LIDAR_RL_UV_EXTRAS)
 LIDAR_RL_RUN_ARGS ?= $(LIDAR_RL_UV_EXTRAS)
-LIDAR_RL_EXPORT_RUN_ARGS ?= $(LIDAR_RL_UV_EXTRAS) --extra export
-# The full pytest suite includes Flax-to-PyTorch parity and bundle tests.
+LIDAR_RL_EXPORT_RUN_ARGS ?= --extra f1tenth --extra export
+# PyTorch export/parity stays in the CPU named-volume environment. Combining its
+# cuDNN runtime with the JAX CUDA plugin breaks GPU backend discovery.
 LIDAR_RL_TEST_RUN_ARGS ?= $(LIDAR_RL_EXPORT_RUN_ARGS)
 # Stop host shell's ROS_DOMAIN_ID from overriding .env via compose interpolation,
 # but still honor an explicit `make foo ROS_DOMAIN_ID=N` command-line override.
@@ -210,7 +213,7 @@ lidar-rl-setup:
 	$(LIDAR_RL_RUN) uv sync $(LIDAR_RL_SYNC_ARGS)
 
 lidar-rl-test:
-	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_TEST_RUN_ARGS) python -m pytest $(LIDAR_RL_ARGS)
+	$(LIDAR_RL_CPU_RUN) uv run --frozen $(LIDAR_RL_TEST_RUN_ARGS) python -m pytest $(LIDAR_RL_ARGS)
 
 lidar-rl-benchmark:
 	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_RUN_ARGS) python scripts/benchmark_env.py $(LIDAR_RL_ARGS)
@@ -227,7 +230,7 @@ lidar-rl-eval:
 	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_RUN_ARGS) python scripts/evaluate.py $(LIDAR_RL_ARGS)
 
 lidar-rl-export:
-	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_EXPORT_RUN_ARGS) python scripts/export_policy.py $(LIDAR_RL_ARGS)
+	$(LIDAR_RL_CPU_RUN) uv run --frozen $(LIDAR_RL_EXPORT_RUN_ARGS) python scripts/export_policy.py $(LIDAR_RL_ARGS)
 
 lidar-rl-install-policy:
 	python3 $(LIDAR_RL_DIR)/scripts/install_policy_bundle.py \

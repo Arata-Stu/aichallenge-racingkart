@@ -240,6 +240,19 @@ class SACSourceContractTest(unittest.TestCase):
         self.assertIn("trajectory_aided_action_reward", source)
         self.assertIn("reference_actions", source)
 
+    def test_export_and_parity_tests_do_not_share_the_cuda_environment(self) -> None:
+        makefile = (PROJECT_ROOT.parents[2] / "Makefile").read_text(encoding="utf-8")
+
+        self.assertIn("LIDAR_RL_CPU_RUN =", makefile)
+        self.assertIn(
+            "$(LIDAR_RL_CPU_RUN) uv run --frozen $(LIDAR_RL_TEST_RUN_ARGS)",
+            makefile,
+        )
+        self.assertIn(
+            "$(LIDAR_RL_CPU_RUN) uv run --frozen $(LIDAR_RL_EXPORT_RUN_ARGS)",
+            makefile,
+        )
+
     def test_train_and_export_clis_fail_closed_on_v1_model_shape(self) -> None:
         required_paths = (
             "agent.actor.encoder.channels",

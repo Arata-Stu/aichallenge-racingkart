@@ -206,6 +206,8 @@ Step 1はまず車速上限とPure Pursuit基準速度を5 m/sに固定します
 
 GPU overlayはJAXのVRAM一括事前予約を無効化し、既定でCUDA async allocatorを使います。大きなReplay配列とXLA実行領域の間で連続領域を確保できない断片化を抑えるためです。RTX 4060 Laptop GPUでは25万件が1.34 GiBの連続配列確保に失敗したため、allocatorだけで無理に詰めず15万件を正準値とします。
 
+`lidar-rl-test`と`lidar-rl-export`は、呼出時の`LIDAR_RL_GPU`にかかわらずCPU用named volumeで実行します。PyTorch 2.3.1のexport/parity依存とJAX CUDA pluginのcuDNNを同じPython環境へ入れず、学習用GPU環境のbackendを保護するためです。GPU backend自体は`check_backend.py`と学習・評価入口で検証します。
+
 smokeでNaNなし、Replay sample、Actor/Critic更新、checkpoint保存・warm restart、決定論評価、Flax/PyTorch parityを確認してから、`--max-transitions`を外してStep 1本学習へ進みます。Step 2のsourceには相対進行、passヒステリシス、安全接触、追従停滞の報酬と評価指標まで接続済みですが、実行はStep 1成立、4台rollout、NPC安全性をUbuntu上で確認してから行ってください。
 
 export済みbundleはchecksumを検証してROS 2パッケージへ配置します。既存modelの置換は明示的に`LIDAR_RL_INSTALL_ARGS=--force`を指定します。
