@@ -31,6 +31,7 @@ class SACLearnerConfig:
     discount: float = 0.99
     target_smoothing_coefficient: float = 0.005
     target_entropy: float = -2.0
+    actor_update_start_step: int = 0
     detect_non_finite: bool = True
 
     def validate(self) -> None:
@@ -47,6 +48,12 @@ class SACLearnerConfig:
             self.target_entropy
         ):
             raise ValueError("target_entropy must be finite")
+        if (
+            isinstance(self.actor_update_start_step, bool)
+            or not isinstance(self.actor_update_start_step, int)
+            or self.actor_update_start_step < 0
+        ):
+            raise ValueError("actor_update_start_step must be a non-negative integer")
         if not isinstance(self.detect_non_finite, bool):
             raise ValueError("detect_non_finite must be boolean")
 
@@ -231,19 +238,53 @@ def make_sac_update(
         )
         proposed_log_alpha = optax.apply_updates(state.log_alpha, alpha_updates)
 
+        actor_updates_enabled = (
+            state.step
+            >= jnp.asarray(config.actor_update_start_step, dtype=state.step.dtype)
+        )
+
+        def select_actor_update(proposed: Any, frozen: Any) -> Any:
+            return jax.tree_util.tree_map(
+                lambda proposed_leaf, frozen_leaf: jnp.where(
+                    actor_updates_enabled,
+                    proposed_leaf,
+                    frozen_leaf,
+                ),
+                proposed,
+                frozen,
+            )
+
+        selected_actor_params = select_actor_update(
+            proposed_actor_params,
+            state.actor_params,
+        )
+        selected_actor_opt_state = select_actor_update(
+            actor_opt_state,
+            state.actor_opt_state,
+        )
+        selected_log_alpha = jnp.where(
+            actor_updates_enabled,
+            proposed_log_alpha,
+            state.log_alpha,
+        )
+        selected_alpha_opt_state = select_actor_update(
+            alpha_opt_state,
+            state.alpha_opt_state,
+        )
+
         proposed_state = SACTrainState(
             step=state.step + jnp.asarray(1, dtype=state.step.dtype),
-            actor_params=proposed_actor_params,
+            actor_params=selected_actor_params,
             critic_params=proposed_critic_params,
             target_critic_params=polyak_update(
                 state.target_critic_params,
                 proposed_critic_params,
                 config.target_smoothing_coefficient,
             ),
-            log_alpha=proposed_log_alpha,
-            actor_opt_state=actor_opt_state,
+            log_alpha=selected_log_alpha,
+            actor_opt_state=selected_actor_opt_state,
             critic_opt_state=critic_opt_state,
-            alpha_opt_state=alpha_opt_state,
+            alpha_opt_state=selected_alpha_opt_state,
         )
         all_finite = _tree_all_finite(
             critic_loss_value,

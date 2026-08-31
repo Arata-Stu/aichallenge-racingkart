@@ -72,6 +72,7 @@ def _validate_config(config: Any) -> tuple[list[str], list[str]]:
         "agent.replay_buffer.capacity",
         "agent.update.batch_size",
         "agent.update.target_entropy",
+        "agent.update.actor_update_start_step",
         "agent.update.updates_per_collection",
         "agent.optimizer.initial_temperature",
         "agent.checkpoint.save_interval_updates",
@@ -233,6 +234,16 @@ def _validate_config(config: Any) -> tuple[list[str], list[str]]:
     ):
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             errors.append(f"{path} must be a positive integer")
+    actor_update_start_step = _select(
+        config,
+        "agent.update.actor_update_start_step",
+    )
+    if (
+        isinstance(actor_update_start_step, bool)
+        or not isinstance(actor_update_start_step, int)
+        or actor_update_start_step < 0
+    ):
+        errors.append("agent.update.actor_update_start_step must be non-negative")
     if (
         isinstance(replay_capacity, int)
         and isinstance(replay_warmup, int)
@@ -403,7 +414,12 @@ def main() -> int:
             print(json.dumps(_resolved_container(config), indent=2, sort_keys=True))
         if args.dry_run:
             replay_warmup = int(config.agent.replay_buffer.warmup_transitions)
-            minimum_smoke_transitions = replay_warmup + int(config.env.num_envs)
+            actor_update_start = int(config.agent.update.actor_update_start_step)
+            minimum_smoke_transitions = (
+                replay_warmup
+                + actor_update_start
+                + int(config.env.num_envs)
+            )
             print(
                 json.dumps(
                     {

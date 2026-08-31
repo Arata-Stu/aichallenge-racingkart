@@ -407,6 +407,9 @@ def train_lidar_sac(
             _value(config, "agent", "update", "target_smoothing_coefficient")
         ),
         target_entropy=float(_value(config, "agent", "update", "target_entropy")),
+        actor_update_start_step=int(
+            _value(config, "agent", "update", "actor_update_start_step")
+        ),
         detect_non_finite=bool(_value(config, "agent", "algorithm", "detect_non_finite")),
     )
     update_once = jax.jit(
@@ -660,6 +663,10 @@ def train_lidar_sac(
     npc_invalid_window = jnp.asarray(0, dtype=jnp.int32)
     terminated_window = jnp.asarray(0, dtype=jnp.int32)
     truncated_window = jnp.asarray(0, dtype=jnp.int32)
+    completed_peak_progress_sum_window = jnp.asarray(0.0, dtype=jnp.float32)
+    completed_peak_progress_max_window = jnp.asarray(0.0, dtype=jnp.float32)
+    episode_progress = jnp.zeros((num_envs,), dtype=jnp.float32)
+    episode_peak_progress = jnp.zeros((num_envs,), dtype=jnp.float32)
     window_transitions = 0
     track_length = float(simulator.track_length)
     control_dt = float(_value(env_config, "simulator", "physics_timestep")) * int(
@@ -722,6 +729,30 @@ def train_lidar_sac(
         states = result.state
         observations = result.observation
         done = result.terminated | result.truncated
+        next_episode_progress = episode_progress + result.diagnostics.progress_delta
+        next_episode_peak_progress = jnp.maximum(
+            episode_peak_progress,
+            next_episode_progress,
+        )
+        completed_peak_progress = jnp.where(
+            done,
+            jnp.clip(next_episode_peak_progress, 0.0, track_length),
+            0.0,
+        )
+        completed_peak_progress_sum_window = (
+            completed_peak_progress_sum_window
+            + jnp.sum(completed_peak_progress)
+        )
+        completed_peak_progress_max_window = jnp.maximum(
+            completed_peak_progress_max_window,
+            jnp.max(completed_peak_progress),
+        )
+        episode_progress = jnp.where(done, 0.0, next_episode_progress)
+        episode_peak_progress = jnp.where(
+            done,
+            0.0,
+            next_episode_peak_progress,
+        )
 
         if num_agents == 4:
             assert npc_reset_function is not None
@@ -799,6 +830,12 @@ def train_lidar_sac(
             terminations = int(jax.device_get(terminated_window))
             truncations = int(jax.device_get(truncated_window))
             completed_episodes = terminations + truncations
+            completed_peak_progress_sum = float(
+                jax.device_get(completed_peak_progress_sum_window)
+            )
+            completed_peak_progress_max = float(
+                jax.device_get(completed_peak_progress_max_window)
+            )
             record: dict[str, Any] = {
                 "collection": collections,
                 "environment_transitions": cumulative_environment_transitions,
@@ -839,6 +876,23 @@ def train_lidar_sac(
                     if completed_episodes
                     else 0.0
                 ),
+                "completed_episode_count": completed_episodes,
+                "mean_completed_episode_peak_progress_meters": (
+                    completed_peak_progress_sum / completed_episodes
+                    if completed_episodes
+                    else 0.0
+                ),
+                "mean_completed_episode_peak_progress_fraction": (
+                    completed_peak_progress_sum
+                    / (completed_episodes * track_length)
+                    if completed_episodes
+                    else 0.0
+                ),
+                "maximum_completed_episode_peak_progress_fraction": (
+                    completed_peak_progress_max / track_length
+                    if completed_episodes
+                    else 0.0
+                ),
                 "unique_passes_per_transition": (
                     unique_passes / window_transitions
                 ),
@@ -852,6 +906,10 @@ def train_lidar_sac(
                     replay_state.reward.shape[0],
                 ),
                 "replay_allocated_bytes": replay_memory_bytes(replay_state),
+                "actor_updates_enabled": (
+                    learner_updates >= learner_config.actor_update_start_step
+                ),
+                "actor_update_start_step": learner_config.actor_update_start_step,
             }
             if latest_update_metrics is not None:
                 host_metrics = jax.device_get(latest_update_metrics)
@@ -879,6 +937,14 @@ def train_lidar_sac(
             npc_invalid_window = jnp.asarray(0, dtype=jnp.int32)
             terminated_window = jnp.asarray(0, dtype=jnp.int32)
             truncated_window = jnp.asarray(0, dtype=jnp.int32)
+            completed_peak_progress_sum_window = jnp.asarray(
+                0.0,
+                dtype=jnp.float32,
+            )
+            completed_peak_progress_max_window = jnp.asarray(
+                0.0,
+                dtype=jnp.float32,
+            )
             window_transitions = 0
 
     if learner_updates != last_checkpoint_update:

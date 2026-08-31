@@ -142,7 +142,9 @@ SVGにはcenterlineの順序、左右境界、episodeごとに分割した走行
 
 Step 2の導入シナリオでは、Egoの前方12 / 24 / 36 mへ3台のNPCを順番に配置します。開始anchorはepisodeごとにコース全周から一様に選ぶため、遭遇区間は固定されません。NPC速度倍率もepisodeごとに独立抽選した後、近いNPCから遠いNPCへ非減少順に並べます。これにより後方NPCの追突を抑えつつ、直線目標3.52〜4.24 m/sの3台を1周内に追い越す機会を作ります。導入段階ではNPCのlookahead・操舵gain・加速gainを検証済みの値に固定し、制動イベント・制御遅延・横offsetも無効にします。通常の追従や停止待機に明示的なstalled penaltyは与えません。これらの多様化は基本追越しの成立後にcurriculumで段階的に追加します。
 
-Step 2のReplay warmupでは、GTをActor観測へ渡さず、教師側だけで前走車との安全距離を制御します。教師は無理に追い越さず安全な追従例を蓄積し、その後のLiDAR-only SACが進行・初回pass報酬と危険接近・衝突ペナルティから「待つ／抜く」を暗黙に選択します。
+Step 2のReplay warmupでは、GTをActor観測へ渡さず、教師側だけで前走車との安全距離を制御します。教師は無理に追い越さず安全な追従例を蓄積し、その後のLiDAR-only SACが進行・初回pass報酬と危険接近・衝突ペナルティから「待つ／抜く」を暗黙に選択します。転移直後にランダム初期化Criticの勾配でStep 1 Actorを壊さないよう、最初の50,000 learner updateはActorとentropy temperatureを固定してCritic/target Criticだけを更新します。その後もActor学習率は`3e-5`へ下げ、GT教師actionとの一致度を最大`0.3`加えるTAL rewardをStep 2の報酬境界で有効にします。
+
+安全な追従や追越し待機が時間切れにならないよう、Step 2だけepisode上限を3,000 step（150 simulated seconds）へ延長します。学習ログにはwindow内で終了したepisodeについて、到達した最大コース進捗の平均m・平均周回比・最大周回比と、Actor更新が解禁済みかを記録します。これらは報酬とは独立した診断値です。
 
 追越し報酬は各NPCの最初のpassだけが対象です。同一NPCを抜き直して報酬を反復取得することはできません。追越し中の近接は毎stepのunsafe-contact項、実接触はterminal collisionとして別々に罰します。評価では1台以上を抜いた`overtake_success_rate`に加えて、3台すべてを抜き、接触・off-trackなしで1周を終えた`all_opponents_overtaken_rate`を記録します。Egoと無関係なNPC衝突は診断件数として記録し、発生後のrelative-progress・pass・unsafe/stalled相手報酬をmaskして停止車両から報酬を得られないようにします。
 
@@ -210,7 +212,7 @@ checkpointにはReplay Bufferと環境状態を含めません。再開時はAct
 
 Step 1で完走できるActorをStep 2へ移す場合は、`training.initialize_actor_from`を使います。この経路はActor parameterだけをchecksum検証後に読み込み、Critic、target Critic、temperature、全optimizer state、Replay、学習stepをStep 2用に新規初期化します。元checkpointとcommit SHAは`run_manifest.json`の`lineage.actor_initialization`へ保存されます。`training.resume_from`との同時指定は拒否します。
 
-まず、最新sourceで4台Pure Pursuitを2,400 step走らせ、`healthy: true`、`npc_collision_without_ego_step_count: 0`、`minimum_observed_npc_speed >= 0`を確認します。その後、Step 1で評価済みのcheckpoint（例では64/64完走した150,000 update）からActor-onlyで50,064 transitionのStep 2 smokeを行います。
+まず、最新sourceで4台Pure Pursuitを2,400 step走らせ、`healthy: true`、`npc_collision_without_ego_step_count: 0`、`minimum_observed_npc_speed >= 0`を確認します。その後、Step 1で評価済みのcheckpoint（例では64/64完走した150,000 update）からActor-onlyで115,200 transitionのStep 2 smokeを行います。これによりReplay warmup、50,000 Critic-only update、約15,000回のActor解凍後updateを一度のrunで検証します。
 
 ```bash
 HOST_UID="$(id -u)" HOST_GID="$(id -g)" \
@@ -226,7 +228,7 @@ docker compose -f compose.yaml -f compose.gpu.yaml \
 
 make -C ../../.. lidar-rl-train-step2 \
   LIDAR_RL_GPU=1 \
-  LIDAR_RL_ARGS='--max-transitions 50064 --output outputs/smoke-step2-warmstart training.initialize_actor_from=outputs/train-step1-tal-stable-1m/checkpoints/step_000000150000'
+  LIDAR_RL_ARGS='--max-transitions 115200 --output outputs/smoke-step2-stabilized training.initialize_actor_from=outputs/train-step1-tal-stable-1m/checkpoints/step_000000150000'
 ```
 
 smokeのReplay sample、有限なloss、NPC単独衝突0を確認した後、別の空outputへ本学習を開始します。Step 2の既定budgetは200万transitionです。
@@ -245,9 +247,9 @@ make -C ../../.. lidar-rl-train-step2 \
   LIDAR_RL_ARGS='--output outputs/train-step2-intro-2m-resume training.resume_from=outputs/train-step2-intro-2m/checkpoints'
 ```
 
-既定の64並列環境では1 collectionごとに64 transitionを追加するため、`updates_per_collection: 64`でupdate-to-data比を1にします。`1`では比率が`1/64`となり、教師warmup後のActor学習が収集に対して不足します。`env.num_envs`を変更する場合は、この値も同じ比率になるよう調整してください。本学習は既定で100万transitionです。約5万learner updateごとにcheckpointを保存して20世代を保持し、終盤に方策が退行しても途中の候補を評価できるようにします。
+既定の64並列環境では1 collectionごとに64 transitionを追加するため、`updates_per_collection: 64`でupdate-to-data比を1にします。`1`では比率が`1/64`となり、教師warmup後の学習が収集に対して不足します。`env.num_envs`を変更する場合は、この値も同じ比率になるよう調整してください。Step 1本学習は既定で100万transition、Step 2は200万transitionです。約5万learner updateごとにcheckpointを保存して20世代を保持し、終盤に方策が退行しても途中の候補を評価できるようにします。
 
-学習ログは報酬とは別に、1 transitionあたりのコース進捗（m・周回比）、シミュレーション時間あたりの進捗（m/s）、完了episodeに対する完走・コースアウト・衝突率を記録します。報酬が改善していても進捗が停滞していないか、逆にペナルティで報酬が低くても走行距離が伸びているかを分けて判断します。
+学習ログは報酬とは別に、1 transitionあたりのコース進捗（m・周回比）、シミュレーション時間あたりの進捗（m/s）、終了episodeの平均・最大到達率、完走・コースアウト・衝突率を記録します。報酬が改善していても進捗が停滞していないか、逆にペナルティで報酬が低くても走行距離が伸びているかを分けて判断します。`actor_updates_enabled=false`の間はCritic-only転移期間であり、Actorとalphaが変化していないことを示します。
 
 Step 1の既定は、UTD比1での長時間更新を安定させるためActor/Critic/temperatureの学習率を`1e-4`、Replay容量を15万件、教師warmupを5万transitionとします。15万件のReplayは実測比で約1.73 GB（1.61 GiB）を見込み、8 GiB GPUにモデル・XLA用の余裕を残します。コースアウトと衝突の終了罰は、それまでに得る進捗報酬を上回る尺度にして、速くコースアウトする方策が正のreturnを得る近道を防ぎます。
 

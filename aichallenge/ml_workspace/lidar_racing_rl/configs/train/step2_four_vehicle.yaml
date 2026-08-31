@@ -25,6 +25,10 @@ seed:
 env:
   num_envs: 64
   num_agents: 4
+  episode:
+    # Slow following and waiting for a safe pass must remain feasible. At the
+    # 50 ms control period this permits 150 simulated seconds.
+    max_steps: 3000
   reset:
     # Place Ego/NPC1/NPC2/NPC3 at 0/12/24/36 m in track order.  This leaves
     # twice the maximum safe-following distance between vehicles and spreads
@@ -42,6 +46,15 @@ training:
   total_environment_transitions: 2000000
   log_interval_collections: 100
   require_clean_repositories: true
+
+agent:
+  optimizer:
+    # Protect the Step 1 policy after the Critic-only transfer phase.
+    actor_learning_rate: 0.00003
+  update:
+    # The Step 2 Critic and target Critic are new. Fit them to traffic replay
+    # before allowing either Actor or entropy-temperature updates.
+    actor_update_start_step: 50000
 
 teacher:
   enabled_for_rollout_smoke: true
@@ -76,8 +89,10 @@ reward:
   # Moving or stopped following is allowed in the introductory scenario.
   stalled_behind_vehicle: false
   trajectory_aided:
-    enabled: false
-    weight: 0.0
+    # Preserve the Step 1 driving prior while the Step 2 Critic learns traffic.
+    # GT remains confined to this scalar reward boundary.
+    enabled: true
+    weight: 0.3
   weights:
     progress: 1.0
     relative_progress: 0.5

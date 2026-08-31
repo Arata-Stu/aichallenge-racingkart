@@ -215,6 +215,27 @@ class SACSourceContractTest(unittest.TestCase):
         self.assertNotIn("critic_params=initialized", trainer_source)
         self.assertIn('lineage["actor_initialization"]', trainer_source)
         self.assertIn("mutually exclusive", train_cli_source)
+        self.assertIn("actor_learning_rate: 0.00003", step2_config)
+        self.assertIn("actor_update_start_step: 50000", step2_config)
+        self.assertIn("max_steps: 3000", step2_config)
+        self.assertIn("enabled: true", step2_config)
+        self.assertIn("weight: 0.3", step2_config)
+
+    def test_transfer_freeze_and_episode_progress_metrics_are_explicit(self) -> None:
+        learner_source = (SAC_ROOT / "learner.py").read_text(encoding="utf-8")
+        trainer_source = (SAC_ROOT / "trainer.py").read_text(encoding="utf-8")
+
+        self.assertIn("actor_update_start_step", learner_source)
+        self.assertIn("selected_actor_params", learner_source)
+        self.assertIn("selected_alpha_opt_state", learner_source)
+        for metric in (
+            "mean_completed_episode_peak_progress_meters",
+            "mean_completed_episode_peak_progress_fraction",
+            "maximum_completed_episode_peak_progress_fraction",
+            "actor_updates_enabled",
+        ):
+            with self.subTest(metric=metric):
+                self.assertIn(f'"{metric}"', trainer_source)
 
     def test_default_update_count_matches_vector_collection_size(self) -> None:
         config_root = SAC_ROOT.parents[2] / "configs"
