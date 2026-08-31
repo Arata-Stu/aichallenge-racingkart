@@ -3,6 +3,8 @@
   <arg name="use_sim_time" default="true"/>
   <arg name="scan_topic" default="/sensing/lidar/scan"/>
   <arg name="control_cmd_topic" default="/control/command/control_cmd"/>
+  <arg name="param_file"
+       default="$(find-pkg-share lidar_racing_controller)/config/lidar_racing_controller.param.yaml"/>
   <arg name="model_path"
        default="$(find-pkg-share lidar_racing_controller)/models/policy_torch.pt"/>
   <arg name="manifest_path"
@@ -12,6 +14,7 @@
     <arg name="use_sim_time" value="$(var use_sim_time)"/>
     <arg name="scan_topic" value="$(var scan_topic)"/>
     <arg name="control_cmd_topic" value="$(var control_cmd_topic)"/>
+    <arg name="param_file" value="$(var param_file)"/>
     <arg name="model_path" value="$(var model_path)"/>
     <arg name="manifest_path" value="$(var manifest_path)"/>
   </include>

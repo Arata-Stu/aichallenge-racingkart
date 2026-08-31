@@ -107,19 +107,23 @@ def _validate_manifest_contract(manifest: Mapping[str, Any]) -> None:
     if (
         isinstance(field_of_view, bool)
         or not isinstance(field_of_view, (int, float))
-        or not math.isclose(
-            float(field_of_view),
-            1.5 * math.pi,
-            rel_tol=0.0,
-            abs_tol=1.0e-9,
+        or not any(
+            math.isclose(
+                float(field_of_view),
+                expected,
+                rel_tol=0.0,
+                abs_tol=1.0e-9,
+            )
+            for expected in (math.pi, 1.5 * math.pi)
         )
     ):
-        raise ValueError("manifest field_of_view must be 270 degrees")
+        raise ValueError("manifest field_of_view must be 180 or 270 degrees")
 
     normalization = _require_mapping(manifest, "range_normalization")
+    expected_range_max = 25.0 if math.isclose(float(field_of_view), math.pi) else 30.0
     if normalization != {
         "type": "divide_by_range_max",
-        "range_max": 30.0,
+        "range_max": expected_range_max,
         "output_min": 0.0,
         "output_max": 1.0,
     }:

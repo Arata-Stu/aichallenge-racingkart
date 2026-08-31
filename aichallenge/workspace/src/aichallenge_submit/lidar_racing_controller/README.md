@@ -11,12 +11,16 @@ Actor用に他のセンサ、自己位置、地図、V2X、車両状態トピッ
 
 ## 処理
 
-1. LaserScanのbeam数、range metadata、期待FOV（既定270°）を検証
-2. 1080点を有効値minimum poolingで360点へ変換
+1. LaserScanのbeam数、range metadata、raw FOVを検証
+2. AWSIM e2eの750点・約180°を角度binのminimum poolingで360点へ変換
 3. rangeを`range_max`で0〜1へ正規化し、validityを別channel化
 4. 4フレームを時系列順に保持し、`[1, 8, 360]`をActorへ入力
 5. Actor meanを`tanh`した決定論的行動を操舵角・加速度へscale
 6. 20 Hz timerでrate limit後の`AckermannControlCommand`をpublish
+
+既存270°・30m Actorのzero-shot確認では、AWSIMが観測しない外側45°ずつを
+`range=1, validity=0`で埋めます。180°・25m fine-tuning後は
+`lidar_racing_controller_awsim_180.param.yaml`を選び、paddingなしで同じadapterを使います。
 
 ## フェイルセーフ
 
@@ -39,6 +43,13 @@ make lidar-rl-install-policy \
 
 ```bash
 ros2 launch lidar_racing_controller lidar_racing_controller.launch.xml
+```
+
+180°・25m fine-tuned bundleでは次を指定します。
+
+```bash
+ros2 launch lidar_racing_controller lidar_racing_controller.launch.xml \
+  param_file:=$(ros2 pkg prefix lidar_racing_controller)/share/lidar_racing_controller/config/lidar_racing_controller_awsim_180.param.yaml
 ```
 
 提出スタックでは`aichallenge_submit_launch/reference.launch.xml`の`control_method:=lidar_racing`から起動します。

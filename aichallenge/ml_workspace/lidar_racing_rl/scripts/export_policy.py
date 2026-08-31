@@ -38,16 +38,15 @@ def _validate_config(config: Any) -> tuple[list[str], list[str]]:
         "runtime": "pytorch",
         "input.topic": "/sensing/lidar/scan",
         "input.type": "sensor_msgs/msg/LaserScan",
-        "input.expected_raw_beams": 1080,
+        "input.expected_raw_beams": 750,
+        "input.expected_raw_range_min": 0.0,
+        "input.expected_raw_range_max": 25.0,
+        "input.expected_raw_angle_min": -1.5666074752807617,
+        "input.expected_raw_angle_max": 1.5707963705062866,
         "output.topic": "/control/command/control_cmd",
         "output.type": "autoware_auto_control_msgs/msg/AckermannControlCommand",
         "preprocessing.canonical_beams": 360,
-        "preprocessing.expected_range_max": 30.0,
-        "preprocessing.expected_angle_min": -3.0 * math.pi / 4.0,
-        "preprocessing.expected_angle_max": 3.0 * math.pi / 4.0,
-        "preprocessing.field_of_view": 3.0 * math.pi / 2.0,
-        "preprocessing.pooling.type": "minimum",
-        "preprocessing.pooling.group_size": 3,
+        "preprocessing.pooling.type": "angular_minimum",
         "preprocessing.frame_stack": 4,
         "preprocessing.invalid_range_replacement": "range_max",
         "preprocessing.normalization": "range_max",
@@ -66,6 +65,31 @@ def _validate_config(config: Any) -> tuple[list[str], list[str]]:
         actual = _select(config, path)
         if actual != expected:
             errors.append(f"{path} must be {expected!r}; got {actual!r}")
+
+    canonical_profile = (
+        _select(config, "preprocessing.field_of_view"),
+        _select(config, "preprocessing.expected_range_max"),
+    )
+    supported_profiles = (
+        (1.5 * math.pi, 30.0),
+        (math.pi, 25.0),
+    )
+    if not all(
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+        for value in canonical_profile
+    ) or not any(
+        math.isclose(float(canonical_profile[0]), fov, rel_tol=0.0, abs_tol=1.0e-12)
+        and math.isclose(
+            float(canonical_profile[1]), maximum, rel_tol=0.0, abs_tol=1.0e-12
+        )
+        for fov, maximum in supported_profiles
+    ):
+        errors.append(
+            "canonical deployment profile must be legacy 270-degree/30m or "
+            "AWSIM e2e 180-degree/25m"
+        )
 
     channels = _select(config, "preprocessing.channels")
     if list(channels or []) != ["range", "validity"]:
@@ -172,6 +196,30 @@ def _validate_training_config(training: Any, deployment: Any) -> list[str]:
         errors.append("training Actor must use a four-frame stack")
     if _select(training, "agent.observation.channels_per_frame") != 2:
         errors.append("training Actor must use two channels per frame")
+    if math.isclose(
+        float(_select(deployment, "preprocessing.field_of_view")),
+        math.pi,
+        rel_tol=0.0,
+        abs_tol=1.0e-12,
+    ):
+        action_comparisons = (
+            ("vehicle.vehicle.max_steering_angle", "control.steering_max_abs"),
+            ("vehicle.vehicle.min_acceleration", "control.acceleration_min"),
+            ("vehicle.vehicle.max_acceleration", "control.acceleration_max"),
+        )
+        for training_path, deployment_path in action_comparisons:
+            training_value = float(_select(training, training_path))
+            deployment_value = float(_select(deployment, deployment_path))
+            if not math.isclose(
+                training_value,
+                deployment_value,
+                rel_tol=0.0,
+                abs_tol=1.0e-9,
+            ):
+                errors.append(
+                    f"training {training_path}={training_value} does not match "
+                    f"{deployment_path}={deployment_value}"
+                )
     v1_model_contract: tuple[tuple[str, Any], ...] = (
         ("agent.actor.distribution", "tanh_gaussian"),
         ("agent.actor.encoder.type", "conv1d"),

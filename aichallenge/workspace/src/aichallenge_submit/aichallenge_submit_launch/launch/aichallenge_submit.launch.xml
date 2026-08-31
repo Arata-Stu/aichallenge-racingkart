@@ -6,6 +6,8 @@
   <arg name="launch_vehicle_interface"/>
   <!-- Keep this default in the submitted package: evaluation replaces only aichallenge_submit/. -->
   <arg name="control_method" default="$(env CONTROL_METHOD mpc)"/>
+  <arg name="lidar_racing_param_file"
+       default="$(env LIDAR_RACING_PARAM_FILE /aichallenge/workspace/install/lidar_racing_controller/share/lidar_racing_controller/config/lidar_racing_controller.param.yaml)"/>
 
   <log message="The arguments for aichallenge_submit_launch."/>
   <log message=" - simulation: $(var simulation)"/>
@@ -22,5 +24,6 @@
     <arg name="simulation" value="$(var simulation)"/>
     <arg name="launch_vehicle_interface" value="$(var launch_vehicle_interface)"/>
     <arg name="control_method" value="$(var control_method)"/>
+    <arg name="lidar_racing_param_file" value="$(var lidar_racing_param_file)"/>
   </include>
 </launch>

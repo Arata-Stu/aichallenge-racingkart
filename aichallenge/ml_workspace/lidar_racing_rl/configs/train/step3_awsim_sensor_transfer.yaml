@@ -1,0 +1,107 @@
+# @package _global_
+
+defaults:
+  - /env: awsim_e2e_lidar
+  - /vehicle: f1tenth_nominal
+  - /agent: sac
+  - _self_
+
+experiment:
+  name: step3_awsim_sensor_transfer
+  # The current trainer's stage denotes agent topology: this transfer remains
+  # the supported single-Ego/no-NPC topology even though it is workflow Step 3.
+  stage: step1
+  description: Actor-only warm transfer to the measured AWSIM 180-degree/25m LiDAR
+
+seed:
+  master: 0
+  environment: 1
+  reset: 2
+  action: 3
+  replay: 4
+  evaluation: 5
+
+env:
+  num_envs: 64
+  num_agents: 1
+
+training:
+  ego_agent_index: 0
+  save_npc_transitions: false
+  teacher_warmup_allowed: true
+  resume_from: null
+  # Supply the reviewed Step 2 checkpoint on the command line. Only Actor
+  # parameters cross the sensor-contract boundary; Critic/replay start clean.
+  initialize_actor_from: null
+  total_environment_transitions: 500000
+  log_interval_collections: 100
+  require_clean_repositories: true
+
+agent:
+  optimizer:
+    actor_learning_rate: 0.00003
+    temperature_learning_rate: 0.00003
+  update:
+    actor_update_start_step: 50000
+    actor_behavior_blend_updates: 50000
+
+teacher:
+  enabled_for_rollout_smoke: true
+  type: pure_pursuit
+  reference_line: centerline
+  base_target_speed: 5.0
+  lookahead: 1.0
+  speed_multiplier: 1.0
+  speed_profile:
+    type: curvature_limited
+    minimum_corner_speed: 3.0
+    maximum_lateral_acceleration: 3.0
+  normalized_action_noise_std: 0.05
+
+vehicle:
+  vehicle:
+    # Preserve the lightweight F1TENTH collision geometry while making the
+    # normalized Actor action mean the same physical command as ROS/AWSIM.
+    max_steering_angle: 0.64
+    min_steering_angle: -0.64
+    max_acceleration: 3.2
+    min_acceleration: -3.2
+    max_velocity: 5.0
+
+reward:
+  progress: true
+  relative_progress: false
+  pass_event: false
+  collision: true
+  unsafe_contact: false
+  offtrack: true
+  smoothness: true
+  reverse: true
+  stalled_behind_vehicle: false
+  trajectory_aided:
+    enabled: true
+    weight: 0.3
+  weights:
+    progress: 1.0
+    relative_progress: 0.0
+    pass: 0.0
+    collision: 50.0
+    unsafe_contact: 0.0
+    off_track: 100.0
+    smoothness: 0.05
+    reverse: 1.0
+    stalled_behind: 0.0
+  overtaking:
+    behind_distance: 0.5
+    ahead_distance: 1.0
+    hold_steps: 5
+    cooldown_steps: 100
+    unsafe_contact_distance: 0.75
+    stalled_max_forward_gap: 8.0
+    stalled_speed_threshold: 0.25
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}_awsim_sensor_transfer

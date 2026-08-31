@@ -15,13 +15,11 @@ output:
   type: autoware_auto_control_msgs/msg/AckermannControlCommand
 
 preprocessing:
-  # Legacy Actor contract used for the first zero-shot AWSIM trial. Raw 180
-  # degree observations are placed in the center and outer bins stay invalid.
   canonical_beams: 360
-  expected_range_max: 30.0
-  expected_angle_min: -2.356194490192345
-  expected_angle_max: 2.356194490192345
-  field_of_view: 4.71238898038469
+  expected_range_max: 25.0
+  expected_angle_min: -1.5707963267948966
+  expected_angle_max: 1.5707963267948966
+  field_of_view: 3.141592653589793
   pooling:
     type: angular_minimum
   frame_stack: 4

@@ -12,7 +12,13 @@ import pytest
 from scripts.install_policy_bundle import install_policy_bundle
 
 
-def _bundle(path: Path, payload: bytes = b"weights") -> Path:
+def _bundle(
+    path: Path,
+    payload: bytes = b"weights",
+    *,
+    field_of_view: float = 1.5 * math.pi,
+    range_max: float = 30.0,
+) -> Path:
     path.mkdir()
     (path / "policy_torch.pt").write_bytes(payload)
     checksum = hashlib.sha256(payload).hexdigest()
@@ -32,10 +38,10 @@ def _bundle(path: Path, payload: bytes = b"weights") -> Path:
                 "beam_count": 360,
                 "frame_stack": 4,
                 "scan_channels": 2,
-                "field_of_view": 1.5 * math.pi,
+                "field_of_view": field_of_view,
                 "range_normalization": {
                     "type": "divide_by_range_max",
-                    "range_max": 30.0,
+                    "range_max": range_max,
                     "output_min": 0.0,
                     "output_max": 1.0,
                 },
@@ -68,6 +74,18 @@ def test_installs_verified_model_and_manifest(tmp_path: Path) -> None:
 
     assert Path(result["model"]).read_bytes() == b"weights"
     assert Path(result["manifest"]).is_file()
+
+
+def test_installs_awsim_180_degree_bundle(tmp_path: Path) -> None:
+    bundle = _bundle(
+        tmp_path / "bundle",
+        field_of_view=math.pi,
+        range_max=25.0,
+    )
+
+    result = install_policy_bundle(bundle, tmp_path / "models")
+
+    assert Path(result["model"]).read_bytes() == b"weights"
 
 
 def test_rejects_checksum_mismatch(tmp_path: Path) -> None:

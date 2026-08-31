@@ -16,6 +16,7 @@ x-autoware-base: &autoware-base
     - RUN_MODE=${RUN_MODE:-}
     - SIM_MODE=${SIM_MODE:-}
     - CONTROL_METHOD=${CONTROL_METHOD:-mpc}
+    - LIDAR_RACING_PARAM_FILE
     # Empty means mode-specific default: regular eval stays off unless a LiDAR
     # controller is selected; the dedicated lidar-rl mode defaults to CPU.
     - LIDAR_MODE=${LIDAR_MODE:-}

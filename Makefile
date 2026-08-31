@@ -196,7 +196,8 @@ autoware-bash:
 	CMD="bash --rcfile /etc/skel/.bashrc -i" docker compose run --rm --no-deps autoware-command
 
 .PHONY: lidar-rl-static lidar-rl-setup lidar-rl-test lidar-rl-benchmark \
-	lidar-rl-train-step1 lidar-rl-train-step2 lidar-rl-eval lidar-rl-export \
+	lidar-rl-train-step1 lidar-rl-train-step2 lidar-rl-train-awsim-sensor \
+	lidar-rl-eval lidar-rl-export \
 	lidar-rl-install-policy
 
 LIDAR_RL_BUNDLE ?= $(LIDAR_RL_DIR)/exported
@@ -225,6 +226,10 @@ lidar-rl-train-step1:
 lidar-rl-train-step2:
 	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_RUN_ARGS) python scripts/train.py \
 		--config-name step2_four_vehicle $(LIDAR_RL_ARGS)
+
+lidar-rl-train-awsim-sensor:
+	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_RUN_ARGS) python scripts/train.py \
+		--config-name step3_awsim_sensor_transfer $(LIDAR_RL_ARGS)
 
 lidar-rl-eval:
 	$(LIDAR_RL_RUN) uv run --frozen $(LIDAR_RL_RUN_ARGS) python scripts/evaluate.py $(LIDAR_RL_ARGS)

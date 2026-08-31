@@ -2,10 +2,9 @@
 
 This module deliberately accepts only range samples and range bounds.  Beam/FOV
 metadata is a caller-side contract: before calling, the adapter must verify the
-expected angular coverage, beam ordering, and angle increment.  In particular,
-an AWSIM 1080-beam scan must consist of contiguous triples that correspond to
-the same 360 canonical angular bins used during training.  This module neither
-reorders beams nor resamples mismatched fields of view.
+expected angular coverage, beam ordering, and angle increment. ROS deployment
+performs raw AWSIM angular pooling before this canonical representation; the
+F1TENTH environment already generates the same 360 angular bins.
 
 ``range_min`` and ``range_max`` must be finite scalar values satisfying
 ``0 <= range_min < range_max``.  They are configuration/metadata values rather

@@ -67,15 +67,18 @@ def make_f1tenth_env(
         raise ValueError("simulator ratio and episode limits must be positive")
     if num_beams != 360:
         raise ValueError("initial Actor/runtime contract requires num_beams=360")
-    if not math.isclose(
-        field_of_view,
-        1.5 * math.pi,
-        rel_tol=0.0,
-        abs_tol=1.0e-9,
+    supported_sensor_profiles = (
+        (1.5 * math.pi, 30.0),
+        (math.pi, 25.0),
+    )
+    if not any(
+        math.isclose(field_of_view, expected_fov, rel_tol=0.0, abs_tol=1.0e-9)
+        and math.isclose(max_range, expected_range, rel_tol=0.0, abs_tol=1.0e-9)
+        for expected_fov, expected_range in supported_sensor_profiles
     ):
-        raise ValueError("initial AWSIM contract requires a 270-degree field_of_view")
-    if not math.isclose(max_range, 30.0, rel_tol=0.0, abs_tol=1.0e-9):
-        raise ValueError("initial AWSIM normalization contract requires range_max=30")
+        raise ValueError(
+            "LiDAR profile must be legacy 270-degree/30m or AWSIM e2e 180-degree/25m"
+        )
     env_id = (
         f"{map_name}_{num_agents}_scan_collision_progress_"
         f"acceleration+steeringangle_{timestep_ratio}_{max_steps}_v0"

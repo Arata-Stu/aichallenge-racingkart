@@ -60,6 +60,8 @@ MAX_NPC_COUNT = 3
 CANONICAL_FRAME_STACK = 4
 CANONICAL_FIELD_OF_VIEW = 1.5 * math.pi
 CANONICAL_RANGE_MAX = 30.0
+AWSIM_E2E_FIELD_OF_VIEW = math.pi
+AWSIM_E2E_RANGE_MAX = 25.0
 
 
 def _required(config: Mapping[str, Any], key: str) -> Any:
@@ -247,20 +249,19 @@ class RacingEnvSettings:
             raise ValueError("initial Actor/runtime contract requires frame_stack=4")
         if not 0.0 <= self.range_min < self.range_max:
             raise ValueError("LiDAR bounds must satisfy 0 <= range_min < range_max")
-        if not math.isclose(
-            self.field_of_view,
-            CANONICAL_FIELD_OF_VIEW,
-            rel_tol=0.0,
-            abs_tol=1.0e-9,
+        supported_sensor_profiles = (
+            (CANONICAL_FIELD_OF_VIEW, CANONICAL_RANGE_MAX),
+            (AWSIM_E2E_FIELD_OF_VIEW, AWSIM_E2E_RANGE_MAX),
+        )
+        if not any(
+            math.isclose(self.field_of_view, fov, rel_tol=0.0, abs_tol=1.0e-9)
+            and math.isclose(self.range_max, maximum, rel_tol=0.0, abs_tol=1.0e-9)
+            for fov, maximum in supported_sensor_profiles
         ):
-            raise ValueError("initial AWSIM contract requires a 270-degree field_of_view")
-        if not math.isclose(
-            self.range_max,
-            CANONICAL_RANGE_MAX,
-            rel_tol=0.0,
-            abs_tol=1.0e-9,
-        ):
-            raise ValueError("initial AWSIM normalization contract requires range_max=30")
+            raise ValueError(
+                "LiDAR profile must be legacy 270-degree/30m or "
+                "AWSIM e2e 180-degree/25m"
+            )
         if self.vehicle_length <= 0.0 or self.vehicle_width <= 0.0:
             raise ValueError("vehicle dimensions must be positive")
         if self.max_steering_angle <= 0.0:

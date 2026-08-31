@@ -1,0 +1,12 @@
+defaults:
+  - dynamic_lidar
+  - _self_
+
+# Measured from the LaserScan published by the AWSIM binary used by the
+# official `make e2e` scenario. The Actor still receives 360 canonical bins;
+# ROS performs the raw 750-to-360 angular pooling.
+lidar:
+  num_beams: 360
+  field_of_view: 3.141592653589793
+  range_min: 0.0
+  range_max: 25.0

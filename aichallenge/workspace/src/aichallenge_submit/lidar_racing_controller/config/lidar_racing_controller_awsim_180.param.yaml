@@ -1,13 +1,11 @@
 /**:
   ros__parameters:
     model:
-      # launch file supplies package-share defaults. Missing files keep fail-safe active.
       path: ""
       manifest_path: ""
       device: "cpu"
 
     preprocessing:
-      # AWSIM `make e2e` runtime metadata (2026 dev binary).
       raw_beams: 750
       raw_range_min: 0.0
       raw_range_max: 25.0
@@ -15,16 +13,12 @@
       raw_angle_max: 1.5707963705062866
       canonical_beams: 360
       frame_stack: 4
-      # Legacy 500k Actor contract. The adapter pads the unobserved outer
-      # 45-degree sectors as invalid until the 180-degree fine-tune is ready.
-      expected_range_max: 30.0
-      expected_angle_min: -2.356194490192345
-      expected_angle_max: 2.356194490192345
+      expected_range_max: 25.0
+      expected_angle_min: -1.5707963267948966
+      expected_angle_max: 1.5707963267948966
       metadata_tolerance: 0.01
 
     action:
-      # These values must exactly match policy_manifest.json.
-      # Authoritative vehicle metadata currently declares 0.64 rad.
       steering_max_abs: 0.64
       acceleration_min: -3.2
       acceleration_max: 3.2
@@ -40,6 +34,5 @@
       safe_acceleration: -1.0
 
     debug:
-      # Keep system-level p50/p95 inference metrics available in evaluation logs.
       enabled: true
       log_interval_seconds: 5.0

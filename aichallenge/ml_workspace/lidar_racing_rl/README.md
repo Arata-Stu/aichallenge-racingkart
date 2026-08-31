@@ -319,6 +319,53 @@ docker compose run --rm --no-deps autoware-command
 
 ## AWSIM ROS推論
 
+公式`make e2e`相当のAWSIM runtimeで観測したLiDAR契約は750点・約180°・25mです。
+ROS側は角度ベースで360点へminimum poolingします。既存270°・30m Actorは外側を
+invalid paddingしてzero-shot診断でき、正式な転移モデルは
+`step3_awsim_sensor_transfer`で180°・25mへActor-only warm startします。
+
+まず既存500k bundleを再利用してzero-shot確認します。既にinstall済みでも、adapterを
+反映するためcontrollerは再buildしてください。
+
+```bash
+make lidar-rl-install-policy \
+  LIDAR_RL_BUNDLE=aichallenge/ml_workspace/lidar_racing_rl/exported/step2-safe-500k \
+  LIDAR_RL_INSTALL_ARGS=--force
+make autoware-build
+make lidar-rl-awsim
+make lidar-rl-request-control
+```
+
+この経路ではActorの重み・入力shapeは変えず、未観測の外側45°ずつだけを
+`range=1, validity=0`として埋めます。したがって比較用のzero-shot baselineであり、
+180°・25mへ適応済みという意味ではありません。
+
+```bash
+make lidar-rl-train-awsim-sensor LIDAR_RL_GPU=1 \
+  LIDAR_RL_ARGS='--output outputs/train-awsim-sensor \
+    training.initialize_actor_from=outputs/train-step2-2m/checkpoints/step_000000500000'
+```
+
+転移後のexportはAWSIM e2e profileを明示します。
+
+```bash
+make lidar-rl-export \
+  LIDAR_RL_ARGS='--checkpoint outputs/train-awsim-sensor/checkpoints \
+    --config configs/deployment/awsim_e2e_180.yaml \
+    --output exported/awsim-e2e-180'
+make lidar-rl-install-policy \
+  LIDAR_RL_BUNDLE=aichallenge/ml_workspace/lidar_racing_rl/exported/awsim-e2e-180 \
+  LIDAR_RL_INSTALL_ARGS=--force
+make autoware-build
+```
+
+ROS起動時は次のparameter profileを渡します。
+
+```bash
+LIDAR_RACING_PARAM_FILE=/aichallenge/workspace/install/lidar_racing_controller/share/lidar_racing_controller/config/lidar_racing_controller_awsim_180.param.yaml \
+  make lidar-rl-awsim
+```
+
 開発時はLiDAR有効scenarioと`lidar_racing_controller`をまとめて既存AI Challenge Dockerで起動します。
 
 ```bash
@@ -350,18 +397,22 @@ sealed評価imageへcontrollerとexport済みmodelを組み込んだ後は、次
 CONTROL_METHOD=lidar_racing make eval
 ```
 
-現在は学習済みmodelがなく、開発・sealed評価ともend-to-end成功を確認していません。model／manifest未配置時はcontrollerの安全停止が継続するのが期待動作です。
+F1TENTH上の500k checkpointはzero-shotへ再利用できますが、AWSIM上の完走はまだ
+受入確認していません。model／manifest未配置時や契約不一致時はcontrollerの安全停止が
+継続するのが期待動作です。
 
 ## 設定と生成物
 
 - `configs/train/step1_single_vehicle.yaml`: 単車両LiDAR-only学習
 - `configs/train/step2_four_vehicle.yaml`: Ego 1台とPure Pursuit NPC 3台。4台はコース順に12 m間隔で配置し、episode終了時は全車をまとめて再配置します
+- `configs/train/step3_awsim_sensor_transfer.yaml`: 既存Actorを180°・25mへ転移する単車両学習
 - `configs/env/`: canonical scan、動的車両LiDAR、将来のdomain randomization契約
 - `configs/vehicle/f1tenth_nominal.yaml`: Spielberg初期学習用の既定F1TENTH車両
 - `configs/vehicle/aichallenge_kart.yaml`: 車両寸法とAWSIM同定値
 - `configs/npc/pure_pursuit.yaml`: NPC横・縦制御と多様化
 - `configs/agent/sac.yaml`: LiDAR-only SAC契約
-- `configs/deployment/awsim.yaml`: AWSIMトピック、実車action上限、前処理、フェイルセーフ
+- `configs/deployment/awsim.yaml`: 既存270°・30m ActorのAWSIM zero-shot profile
+- `configs/deployment/awsim_e2e_180.yaml`: 180°・25m転移ActorのAWSIM profile
 
 設定値に`null`が残る項目はAWSIM rosbagによる同定が必要です。推測値のまま本番設定として確定しないでください。
 

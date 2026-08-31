@@ -430,7 +430,11 @@ class SACSourceContractTest(unittest.TestCase):
         self.assertIn('f"++env.num_envs={args.num_envs}"', source)
 
     def test_train_primary_configs_compose_into_the_global_package(self) -> None:
-        for filename in ("step1_single_vehicle.yaml", "step2_four_vehicle.yaml"):
+        for filename in (
+            "step1_single_vehicle.yaml",
+            "step2_four_vehicle.yaml",
+            "step3_awsim_sensor_transfer.yaml",
+        ):
             source = (
                 PROJECT_ROOT / "configs" / "train" / filename
             ).read_text(encoding="utf-8")
@@ -445,7 +449,11 @@ class SACSourceContractTest(unittest.TestCase):
         self.assertIn("length: 0.58", profile)
         self.assertIn("width: 0.31", profile)
         self.assertIn("wheelbase: 0.3302", profile)
-        for filename in ("step1_single_vehicle.yaml", "step2_four_vehicle.yaml"):
+        for filename in (
+            "step1_single_vehicle.yaml",
+            "step2_four_vehicle.yaml",
+            "step3_awsim_sensor_transfer.yaml",
+        ):
             source = (
                 PROJECT_ROOT / "configs" / "train" / filename
             ).read_text(encoding="utf-8")
@@ -463,6 +471,29 @@ class SACSourceContractTest(unittest.TestCase):
         self.assertIn("acceleration_min: -3.2", deployment)
         self.assertIn("acceleration_max: 3.2", deployment)
         self.assertIn('_value(deployment_config, "control")', exporter)
+
+    def test_measured_awsim_lidar_contract_is_recorded_for_deployment(self) -> None:
+        repository_root = PROJECT_ROOT.parents[2]
+        paths = (
+            PROJECT_ROOT / "configs" / "deployment" / "awsim.yaml",
+            PROJECT_ROOT / "configs" / "deployment" / "awsim_e2e_180.yaml",
+            repository_root
+            / "aichallenge"
+            / "workspace"
+            / "src"
+            / "aichallenge_submit"
+            / "lidar_racing_controller"
+            / "config"
+            / "lidar_racing_controller.param.yaml",
+        )
+        for path in paths:
+            source = path.read_text(encoding="utf-8")
+            with self.subTest(path=path):
+                self.assertRegex(source, r"(?:expected_)?raw_beams: 750")
+                self.assertRegex(source, r"(?:expected_)?raw_range_min: 0\.0")
+                self.assertRegex(source, r"(?:expected_)?raw_range_max: 25\.0")
+                self.assertIn("-1.5666074752807617", source)
+                self.assertIn("1.5707963705062866", source)
 
     def test_action_steering_limit_matches_authoritative_vehicle_metadata(self) -> None:
         repository_root = PROJECT_ROOT.parents[2]

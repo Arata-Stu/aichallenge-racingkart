@@ -238,6 +238,18 @@ def test_settings_accept_fixed_lidar_only_contract() -> None:
     _valid_settings().validate()
 
 
+def test_settings_accept_measured_awsim_e2e_lidar_contract() -> None:
+    settings = _valid_settings()
+    transferred = RacingEnvSettings(
+        **{
+            **settings.__dict__,
+            "field_of_view": math.pi,
+            "range_max": 25.0,
+        },
+    )
+    transferred.validate()
+
+
 def test_enabled_step2_reward_requires_positive_weight() -> None:
     settings = _valid_settings()
     invalid = RacingEnvSettings(
@@ -254,9 +266,9 @@ def test_enabled_step2_reward_requires_positive_weight() -> None:
         ("num_agents", 3, "either one or four"),
         ("num_beams", 1080, "exactly 360"),
         ("frame_stack", 3, "frame_stack=4"),
-        ("field_of_view", math.pi, "270-degree"),
+        ("field_of_view", math.pi, "LiDAR profile"),
         ("range_max", 0.001, "LiDAR bounds"),
-        ("range_max", 20.0, "range_max=30"),
+        ("range_max", 20.0, "LiDAR profile"),
         ("reset_longitudinal_spacing", 1.0, "at least one vehicle length"),
     ],
 )

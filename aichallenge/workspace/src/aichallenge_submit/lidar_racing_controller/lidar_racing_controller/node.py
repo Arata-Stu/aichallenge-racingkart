@@ -46,6 +46,18 @@ class LidarRacingControllerNode(Node):
         self._expected_range_max = float(
             self.get_parameter("preprocessing.expected_range_max").value
         )
+        self._raw_range_max = float(
+            self.get_parameter("preprocessing.raw_range_max").value
+        )
+        self._raw_range_min = float(
+            self.get_parameter("preprocessing.raw_range_min").value
+        )
+        self._raw_angle_min = float(
+            self.get_parameter("preprocessing.raw_angle_min").value
+        )
+        self._raw_angle_max = float(
+            self.get_parameter("preprocessing.raw_angle_max").value
+        )
         self._expected_angle_min = float(
             self.get_parameter("preprocessing.expected_angle_min").value
         )
@@ -138,9 +150,13 @@ class LidarRacingControllerNode(Node):
         self.declare_parameter("model.path", "")
         self.declare_parameter("model.manifest_path", "")
         self.declare_parameter("model.device", "cpu")
-        self.declare_parameter("preprocessing.raw_beams", 1080)
+        self.declare_parameter("preprocessing.raw_beams", 750)
         self.declare_parameter("preprocessing.canonical_beams", 360)
         self.declare_parameter("preprocessing.frame_stack", 4)
+        self.declare_parameter("preprocessing.raw_range_min", 0.0)
+        self.declare_parameter("preprocessing.raw_range_max", 25.0)
+        self.declare_parameter("preprocessing.raw_angle_min", -1.5666074752807617)
+        self.declare_parameter("preprocessing.raw_angle_max", 1.5707963705062866)
         self.declare_parameter("preprocessing.expected_range_max", 30.0)
         self.declare_parameter("preprocessing.expected_angle_min", -3.0 * math.pi / 4.0)
         self.declare_parameter("preprocessing.expected_angle_max", 3.0 * math.pi / 4.0)
@@ -158,14 +174,27 @@ class LidarRacingControllerNode(Node):
         self.declare_parameter("debug.log_interval_seconds", 5.0)
 
     def _validate_configuration(self) -> None:
-        if self._expected_raw_beams <= 0 or self._canonical_beams <= 0:
-            raise ValueError("configured beam counts must be positive")
-        if self._expected_raw_beams % self._canonical_beams != 0:
-            raise ValueError("raw_beams must be divisible by canonical_beams")
+        if self._expected_raw_beams <= 0 or self._canonical_beams < 2:
+            raise ValueError(
+                "raw_beams must be positive and canonical_beams at least two"
+            )
         if self._frame_count <= 0:
             raise ValueError("frame_stack must be positive")
         if not math.isfinite(self._expected_range_max) or self._expected_range_max <= 0.0:
             raise ValueError("expected_range_max must be finite and positive")
+        if (
+            not math.isfinite(self._raw_range_min)
+            or not math.isfinite(self._raw_range_max)
+            or self._raw_range_min < 0.0
+            or self._raw_range_max <= self._raw_range_min
+        ):
+            raise ValueError("raw range bounds must be finite and ordered")
+        if not math.isfinite(self._raw_angle_min) or not math.isfinite(
+            self._raw_angle_max
+        ):
+            raise ValueError("raw LiDAR angle bounds must be finite")
+        if self._raw_angle_max <= self._raw_angle_min:
+            raise ValueError("raw_angle_max must exceed raw_angle_min")
         if not math.isfinite(self._expected_angle_min) or not math.isfinite(
             self._expected_angle_max
         ):
@@ -248,9 +277,13 @@ class LidarRacingControllerNode(Node):
                 angle_increment=message.angle_increment,
                 expected_raw_beams=self._expected_raw_beams,
                 canonical_beams=self._canonical_beams,
-                expected_range_max=self._expected_range_max,
-                expected_angle_min=self._expected_angle_min,
-                expected_angle_max=self._expected_angle_max,
+                expected_range_min=self._raw_range_min,
+                expected_range_max=self._raw_range_max,
+                expected_angle_min=self._raw_angle_min,
+                expected_angle_max=self._raw_angle_max,
+                canonical_range_max=self._expected_range_max,
+                canonical_angle_min=self._expected_angle_min,
+                canonical_angle_max=self._expected_angle_max,
                 metadata_tolerance=self._metadata_tolerance,
             )
         except (ScanValidationError, TypeError, ValueError) as error:
