@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 
 @dataclass(frozen=True)
@@ -163,6 +163,7 @@ def write_run_artifacts(
     resolved_config_yaml: str,
     repository: RepositorySnapshot,
     environment: dict[str, Any] | None = None,
+    lineage: Mapping[str, Any] | None = None,
 ) -> None:
     """Write the blueprint provenance files atomically before collection."""
 
@@ -197,6 +198,7 @@ def write_run_artifacts(
                         path: _status_is_dirty(status)
                         for path, status in repository.submodule_status.items()
                     },
+                    "lineage": dict(lineage or {}),
                 },
                 indent=2,
                 sort_keys=True,

@@ -93,6 +93,7 @@ def train_lidar_sac(
     )
     from lidar_racing_rl.sac.checkpoint import (
         checkpoint_config_sha256,
+        load_actor_variables,
         load_checkpoint,
         prune_checkpoints,
         read_checkpoint_metadata,
@@ -118,6 +119,69 @@ def train_lidar_sac(
     )
     from lidar_racing_rl.sac.train_state import create_sac_optimizers
 
+    config_hash = checkpoint_config_sha256(config)
+    resume_value = _value(config, "training", "resume_from")
+    resume_checkpoint = Path(str(resume_value)) if resume_value is not None else None
+    initialize_actor_value = _value(
+        config,
+        "training",
+        "initialize_actor_from",
+    )
+    initialize_actor_checkpoint = (
+        Path(str(initialize_actor_value))
+        if initialize_actor_value is not None
+        else None
+    )
+    if resume_checkpoint is not None and initialize_actor_checkpoint is not None:
+        raise ValueError(
+            "training.resume_from and training.initialize_actor_from are "
+            "mutually exclusive"
+        )
+    resume_metadata = None
+    initialize_actor_metadata = None
+    cumulative_environment_transitions = 0
+    resume_learner_step = 0
+    if resume_checkpoint is not None:
+        resume_metadata = read_checkpoint_metadata(resume_checkpoint)
+        if resume_metadata.architecture_version != ARCHITECTURE_VERSION:
+            raise ValueError("checkpoint architecture version does not match the learner")
+        if resume_metadata.config_sha256 != config_hash:
+            raise ValueError("checkpoint config hash does not match the resolved run config")
+        cumulative_environment_transitions = resume_metadata.environment_transitions
+        resume_learner_step = resume_metadata.step
+    elif initialize_actor_checkpoint is not None:
+        initialize_actor_metadata = read_checkpoint_metadata(
+            initialize_actor_checkpoint
+        )
+        if initialize_actor_metadata.architecture_version != ARCHITECTURE_VERSION:
+            raise ValueError(
+                "Actor initialization checkpoint architecture does not match the learner"
+            )
+
+    def checkpoint_lineage(path: Path, metadata: Any) -> dict[str, Any]:
+        return {
+            "checkpoint": str(path),
+            "architecture_version": metadata.architecture_version,
+            "step": metadata.step,
+            "environment_transitions": metadata.environment_transitions,
+            "config_sha256": metadata.config_sha256,
+            "root_commit": metadata.root_commit,
+            "submodule_commit": metadata.submodule_commit,
+            "actor_payload_sha256": metadata.actor_payload_sha256,
+        }
+
+    lineage: dict[str, Any] = {}
+    if resume_metadata is not None:
+        lineage["resume_checkpoint"] = checkpoint_lineage(
+            resume_checkpoint,
+            resume_metadata,
+        )
+    elif initialize_actor_metadata is not None:
+        lineage["actor_initialization"] = checkpoint_lineage(
+            initialize_actor_checkpoint,
+            initialize_actor_metadata,
+        )
+
     snapshot = capture_repository_snapshot(repository_root, (submodule_path,))
     require_clean = bool(_value(config, "training", "require_clean_repositories"))
     dirty_submodules = [
@@ -132,6 +196,7 @@ def train_lidar_sac(
         run_directory,
         resolved_config_yaml=resolved_config_yaml,
         repository=snapshot,
+        lineage=lineage,
     )
 
     num_envs = int(_value(config, "env", "num_envs"))
@@ -161,21 +226,6 @@ def train_lidar_sac(
         or max_environment_transitions < 1
     ):
         raise ValueError("max_environment_transitions must be a positive integer")
-
-    config_hash = checkpoint_config_sha256(config)
-    resume_value = _value(config, "training", "resume_from")
-    resume_checkpoint = Path(str(resume_value)) if resume_value is not None else None
-    resume_metadata = None
-    cumulative_environment_transitions = 0
-    resume_learner_step = 0
-    if resume_checkpoint is not None:
-        resume_metadata = read_checkpoint_metadata(resume_checkpoint)
-        if resume_metadata.architecture_version != ARCHITECTURE_VERSION:
-            raise ValueError("checkpoint architecture version does not match the learner")
-        if resume_metadata.config_sha256 != config_hash:
-            raise ValueError("checkpoint config hash does not match the resolved run config")
-        cumulative_environment_transitions = resume_metadata.environment_transitions
-        resume_learner_step = resume_metadata.step
 
     remaining_configured_transitions = (
         configured_transitions - cumulative_environment_transitions
@@ -276,6 +326,52 @@ def train_lidar_sac(
         restored_step = int(jax.device_get(learner_state.step))
         if restored_step != loaded_metadata.step:
             raise ValueError("checkpoint metadata step does not match learner state")
+    elif initialize_actor_checkpoint is not None:
+        actor_variables, loaded_metadata = load_actor_variables(
+            initialize_actor_checkpoint
+        )
+        if loaded_metadata != initialize_actor_metadata:
+            raise RuntimeError(
+                "Actor initialization checkpoint metadata changed while the run "
+                "was starting"
+            )
+        initialized_actor_params = jax.tree_util.tree_map(
+            jnp.asarray,
+            actor_variables["params"],
+        )
+        template_structure = jax.tree_util.tree_structure(
+            learner_state.actor_params
+        )
+        initialized_structure = jax.tree_util.tree_structure(
+            initialized_actor_params
+        )
+        if initialized_structure != template_structure:
+            raise ValueError(
+                "Actor initialization checkpoint parameter tree does not match"
+            )
+        template_leaves = jax.tree_util.tree_leaves(learner_state.actor_params)
+        initialized_leaves = jax.tree_util.tree_leaves(initialized_actor_params)
+        template_signatures = tuple(
+            (tuple(leaf.shape), str(leaf.dtype)) for leaf in template_leaves
+        )
+        initialized_signatures = tuple(
+            (tuple(leaf.shape), str(leaf.dtype)) for leaf in initialized_leaves
+        )
+        if initialized_signatures != template_signatures:
+            raise ValueError(
+                "Actor initialization checkpoint parameter shapes or dtypes do not match"
+            )
+        if not all(
+            bool(jax.device_get(jnp.all(jnp.isfinite(leaf))))
+            for leaf in initialized_leaves
+        ):
+            raise ValueError(
+                "Actor initialization checkpoint contains non-finite parameters"
+            )
+        learner_state = learner_state.replace(
+            actor_params=initialized_actor_params,
+            actor_opt_state=optimizers.actor.init(initialized_actor_params),
+        )
 
     replay_config = _value(config, "agent", "replay_buffer")
     if _value(replay_config, "implementation") != "jax_ring":

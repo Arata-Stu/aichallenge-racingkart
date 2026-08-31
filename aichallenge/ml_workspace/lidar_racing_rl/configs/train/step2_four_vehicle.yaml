@@ -36,6 +36,9 @@ training:
   save_npc_transitions: false
   opponent_pool_enabled: false
   resume_from: null
+  # Cross-stage transfer loads only Actor params. Critic, target Critic,
+  # temperature, optimizer states, replay, and counters start from Step 2 zero.
+  initialize_actor_from: null
   total_environment_transitions: 2000000
   log_interval_collections: 100
   require_clean_repositories: true

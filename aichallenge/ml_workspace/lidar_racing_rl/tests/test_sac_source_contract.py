@@ -147,6 +147,9 @@ class SACSourceContractTest(unittest.TestCase):
 
         self.assertEqual(assignments["CHECKPOINT_SCHEMA_VERSION"], 2)
         self.assertIn("environment_transitions", annotated_fields)
+        checkpoint_source = (SAC_ROOT / "checkpoint.py").read_text(encoding="utf-8")
+        self.assertIn('training["resume_from"] = None', checkpoint_source)
+        self.assertIn('training["initialize_actor_from"] = None', checkpoint_source)
 
     def test_checkpoint_publication_is_serialized_per_root(self) -> None:
         tree = _tree("checkpoint.py")
@@ -189,6 +192,29 @@ class SACSourceContractTest(unittest.TestCase):
                 for call in checkpoint_calls
             )
         )
+
+    def test_step2_actor_warm_start_is_explicit_and_actor_only(self) -> None:
+        config_root = SAC_ROOT.parents[2] / "configs" / "train"
+        step1_config = (config_root / "step1_single_vehicle.yaml").read_text(
+            encoding="utf-8"
+        )
+        step2_config = (config_root / "step2_four_vehicle.yaml").read_text(
+            encoding="utf-8"
+        )
+        trainer_source = (SAC_ROOT / "trainer.py").read_text(encoding="utf-8")
+        train_cli_source = (SCRIPT_ROOT / "train.py").read_text(encoding="utf-8")
+
+        self.assertIn("initialize_actor_from: null", step1_config)
+        self.assertIn("initialize_actor_from: null", step2_config)
+        self.assertIn("load_actor_variables", trainer_source)
+        self.assertIn("actor_params=initialized_actor_params", trainer_source)
+        self.assertIn(
+            "actor_opt_state=optimizers.actor.init(initialized_actor_params)",
+            trainer_source,
+        )
+        self.assertNotIn("critic_params=initialized", trainer_source)
+        self.assertIn('lineage["actor_initialization"]', trainer_source)
+        self.assertIn("are mutually exclusive", train_cli_source)
 
     def test_default_update_count_matches_vector_collection_size(self) -> None:
         config_root = SAC_ROOT.parents[2] / "configs"

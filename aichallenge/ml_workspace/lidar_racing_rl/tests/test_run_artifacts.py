@@ -27,12 +27,15 @@ def test_write_run_artifacts_is_complete_and_refuses_overwrite(tmp_path) -> None
         resolved_config_yaml="seed: 7\n",
         repository=snapshot,
         environment={"python": "test"},
+        lineage={"actor_initialization": {"step": 150000}},
     )
 
     assert (tmp_path / "resolved_config.yaml").read_text(encoding="utf-8") == "seed: 7\n"
     assert json.loads((tmp_path / "submodule_commits.txt").read_text(encoding="utf-8")) == {
         "repos/f1": "def456"
     }
+    manifest = json.loads((tmp_path / "run_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["lineage"]["actor_initialization"]["step"] == 150000
     with pytest.raises(FileExistsError, match="provenance"):
         write_run_artifacts(
             tmp_path,

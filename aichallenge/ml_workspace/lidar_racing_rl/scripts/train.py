@@ -258,6 +258,19 @@ def _validate_config(config: Any) -> tuple[list[str], list[str]]:
 
     if _select(config, "training.require_clean_repositories") is not True:
         errors.append("training.require_clean_repositories must remain true for truthful SHAs")
+    resume_from = _select(config, "training.resume_from")
+    initialize_actor_from = _select(config, "training.initialize_actor_from")
+    for path, value in (
+        ("training.resume_from", resume_from),
+        ("training.initialize_actor_from", initialize_actor_from),
+    ):
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            errors.append(f"{path} must be null or a non-empty checkpoint path")
+    if resume_from is not None and initialize_actor_from is not None:
+        errors.append(
+            "training.resume_from and training.initialize_actor_from are "
+            "mutually exclusive"
+        )
     if _select(config, "teacher.reference_line") != "centerline":
         errors.append("training requires teacher.reference_line=centerline")
     teacher_base_speed = _select(config, "teacher.base_target_speed")
@@ -389,6 +402,8 @@ def main() -> int:
         if args.print_config:
             print(json.dumps(_resolved_container(config), indent=2, sort_keys=True))
         if args.dry_run:
+            replay_warmup = int(config.agent.replay_buffer.warmup_transitions)
+            minimum_smoke_transitions = replay_warmup + int(config.env.num_envs)
             print(
                 json.dumps(
                     {
@@ -403,8 +418,13 @@ def main() -> int:
                             F1TENTH_SUBMODULE / "f1tenth_gym_jax"
                         ).is_dir(),
                         "output": str(args.output or _default_run_directory(config)),
+                        "resume_from": _select(config, "training.resume_from"),
+                        "initialize_actor_from": _select(
+                            config,
+                            "training.initialize_actor_from",
+                        ),
                         "sac_smoke_acceptance": {
-                            "minimum_environment_transitions": 10_000,
+                            "minimum_environment_transitions": minimum_smoke_transitions,
                             "requires_finite_values": True,
                             "requires_checkpoint_save_and_resume": True,
                             "requires_deterministic_evaluation": True,

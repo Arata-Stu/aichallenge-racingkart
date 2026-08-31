@@ -28,6 +28,7 @@ training:
   save_npc_transitions: false
   teacher_warmup_allowed: true
   resume_from: null
+  initialize_actor_from: null
   total_environment_transitions: 1000000
   log_interval_collections: 100
   require_clean_repositories: true

@@ -179,17 +179,17 @@ make lidar-rl-eval LIDAR_RL_ARGS='--dry-run --episodes 10'
 make lidar-rl-export LIDAR_RL_ARGS='--dry-run --output exported/'
 ```
 
-依存環境を用意したUbuntuホストでは、まず10,000 transitionのStep 1 smokeを実施します。学習はrootとforkのcommit SHAを成果物へ記録するため、未commit差分がある状態ではfail closedします。
+依存環境を用意したUbuntuホストでは、まずReplay warmup 50,000件を越える50,064 transitionのStep 1 smokeを実施します。学習はrootとforkのcommit SHAを成果物へ記録するため、未commit差分や未追跡ファイルがある状態ではfail closedします。
 
 ```bash
 make lidar-rl-train-step1 \
   LIDAR_RL_GPU=1 \
-  LIDAR_RL_ARGS='--max-transitions 10000 --output outputs/smoke-step1'
+  LIDAR_RL_ARGS='--max-transitions 50064 --output outputs/smoke-step1'
 
 # Replayを再収集するwarm restart。bit-exactな継続ではない
 make lidar-rl-train-step1 \
   LIDAR_RL_GPU=1 \
-  LIDAR_RL_ARGS='--max-transitions 10000 --output outputs/smoke-step1-resume training.resume_from=outputs/smoke-step1/checkpoints'
+  LIDAR_RL_ARGS='--max-transitions 50064 --output outputs/smoke-step1-resume training.resume_from=outputs/smoke-step1/checkpoints'
 
 make lidar-rl-eval \
   LIDAR_RL_GPU=1 \
@@ -207,6 +207,43 @@ make lidar-rl-export \
 ```
 
 checkpointにはReplay Bufferと環境状態を含めません。再開時はActor/Critic/optimizer/temperatureと累積進捗を復元し、新しいReplayを教師方策で再warmupしてから更新を再開します。
+
+Step 1で完走できるActorをStep 2へ移す場合は、`training.initialize_actor_from`を使います。この経路はActor parameterだけをchecksum検証後に読み込み、Critic、target Critic、temperature、全optimizer state、Replay、学習stepをStep 2用に新規初期化します。元checkpointとcommit SHAは`run_manifest.json`の`lineage.actor_initialization`へ保存されます。`training.resume_from`との同時指定は拒否します。
+
+まず、最新sourceで4台Pure Pursuitを2,400 step走らせ、`healthy: true`、`npc_collision_without_ego_step_count: 0`、`minimum_observed_npc_speed >= 0`を確認します。その後、Step 1で評価済みのcheckpoint（例では64/64完走した150,000 update）からActor-onlyで50,064 transitionのStep 2 smokeを行います。
+
+```bash
+HOST_UID="$(id -u)" HOST_GID="$(id -g)" \
+docker compose -f compose.yaml -f compose.gpu.yaml \
+  run --rm --no-deps lidar-rl \
+  uv run --frozen --extra f1tenth --extra cuda \
+  python scripts/run_single_rollout.py \
+  --config-name step2_four_vehicle \
+  --action-source pure-pursuit \
+  --steps 2400 \
+  --output outputs/step2-overtake-intro-v2.json \
+  --trace-svg outputs/step2-overtake-intro-v2.svg
+
+make -C ../../.. lidar-rl-train-step2 \
+  LIDAR_RL_GPU=1 \
+  LIDAR_RL_ARGS='--max-transitions 50064 --output outputs/smoke-step2-warmstart training.initialize_actor_from=outputs/train-step1-tal-stable-1m/checkpoints/step_000000150000'
+```
+
+smokeのReplay sample、有限なloss、NPC単独衝突0を確認した後、別の空outputへ本学習を開始します。Step 2の既定budgetは200万transitionです。
+
+```bash
+make -C ../../.. lidar-rl-train-step2 \
+  LIDAR_RL_GPU=1 \
+  LIDAR_RL_ARGS='--output outputs/train-step2-intro-2m training.initialize_actor_from=outputs/train-step1-tal-stable-1m/checkpoints/step_000000150000'
+```
+
+Step 2をcheckpointから再開するときは`training.resume_from`だけを指定します。checkpointの場所とActor初期化元の場所は学習意味論のconfig hashから除外され、元Actorの出自は最初のrun manifestに保存されます。再開処理で復元するのはStep 2のlearner checkpointであり、Step 1 Actorを再適用することはありません。
+
+```bash
+make -C ../../.. lidar-rl-train-step2 \
+  LIDAR_RL_GPU=1 \
+  LIDAR_RL_ARGS='--output outputs/train-step2-intro-2m-resume training.resume_from=outputs/train-step2-intro-2m/checkpoints'
+```
 
 既定の64並列環境では1 collectionごとに64 transitionを追加するため、`updates_per_collection: 64`でupdate-to-data比を1にします。`1`では比率が`1/64`となり、教師warmup後のActor学習が収集に対して不足します。`env.num_envs`を変更する場合は、この値も同じ比率になるよう調整してください。本学習は既定で100万transitionです。約5万learner updateごとにcheckpointを保存して20世代を保持し、終盤に方策が退行しても途中の候補を評価できるようにします。
 

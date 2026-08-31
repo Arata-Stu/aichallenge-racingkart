@@ -93,7 +93,7 @@ def canonical_config_sha256(config: Any) -> str:
 
 
 def checkpoint_config_sha256(config: Any) -> str:
-    """Hash learning semantics while ignoring the operational resume location."""
+    """Hash learning semantics while ignoring operational checkpoint locations."""
 
     normalized = json.loads(
         json.dumps(config, allow_nan=False, ensure_ascii=False, sort_keys=True)
@@ -102,6 +102,7 @@ def checkpoint_config_sha256(config: Any) -> str:
         training = normalized.get("training")
         if isinstance(training, dict):
             training["resume_from"] = None
+            training["initialize_actor_from"] = None
     return canonical_config_sha256(normalized)
 
 
